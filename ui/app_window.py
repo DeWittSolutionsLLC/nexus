@@ -424,7 +424,9 @@ class AppWindow:
             self.root.after(0, lambda: self.chat.add_system_message(f"[NEXUS] Browser warning: {str(e)[:60]}"))
 
         self.root.after(0, lambda: self.chat.add_system_message("[NEXUS] Connecting plugins..."))
-        await self.plugin_manager.connect_all()
+        await self.plugin_manager.connect_all(
+            on_plugin_connected=lambda: self.root.after(0, self.sidebar.update_status)
+        )
 
         plugin_count = sum(1 for p in self.plugin_manager.plugins.values() if p.is_connected)
         self.root.after(0, lambda: self.chat.add_system_message(

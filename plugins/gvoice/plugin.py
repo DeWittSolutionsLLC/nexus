@@ -32,6 +32,19 @@ class GoogleVoicePlugin(BasePlugin):
         """Build a correct Google Voice URL for the given section."""
         return f"https://voice.google.com/u/{self._user_num}/{section}"
 
+    def _normalize_phone(self, phone: str) -> str:
+        """Return E.164 format (+12485551234). Assumes US if 10 digits."""
+        digits = re.sub(r'\D', '', phone)
+        if len(digits) == 10:
+            digits = '1' + digits
+        return '+' + digits
+
+    def _text_url(self, phone: str) -> str:
+        """Direct URL to open a specific Google Voice text conversation."""
+        e164 = self._normalize_phone(phone)
+        encoded = e164.replace('+', '%2B')
+        return f"https://voice.google.com/u/{self._user_num}/messages?itemId=t.{encoded}"
+
     async def connect(self) -> bool:
         if not self.browser:
             self._status_message = "No browser engine"
@@ -96,9 +109,9 @@ class GoogleVoicePlugin(BasePlugin):
 
     def get_capabilities(self) -> list[dict]:
         return [
-            {"action": "send_text", "description": "Send a text/SMS message via Google Voice", "params": ["phone_number", "contact_name", "message"]},
-            {"action": "read_texts", "description": "Read recent text conversations in Google Voice", "params": ["limit"]},
-            {"action": "read_conversation", "description": "Read messages in a specific conversation", "params": ["contact_name", "limit"]},
+            {"action": "send_text", "description": "Send a text/SMS via Google Voice — phone_number required", "params": ["phone_number", "message", "contact_name"]},
+            {"action": "read_texts", "description": "List recent Google Voice text conversations", "params": ["limit"]},
+            {"action": "read_conversation", "description": "Read messages in a specific conversation — use phone_number for direct navigation", "params": ["phone_number", "contact_name", "limit"]},
             {"action": "make_call", "description": "Start a phone call via Google Voice", "params": ["phone_number", "contact_name"]},
             {"action": "check_voicemail", "description": "Check recent voicemails", "params": ["limit"]},
             {"action": "list_conversations", "description": "List all recent Google Voice conversations", "params": ["limit"]},
@@ -115,91 +128,42 @@ class GoogleVoicePlugin(BasePlugin):
 
         if not message:
             return "What should the text say?"
-        if not phone_number and not contact_name:
-            return "Who should I text? Give me a phone number or contact name."
+        if not phone_number:
+            return "I need a phone number to send a text via Google Voice (e.g. 248-829-9534)."
 
-        # Navigate to messages tab
-        await self.page.goto(self._gv_url("messages"), wait_until="domcontentloaded")
-        await asyncio.sleep(2)
+        label = contact_name or phone_number
 
-        # Click "Send new message" button
-        try:
-            new_msg_btn = self.page.locator(
-                'button[aria-label="Send new message"], '
-                'a[gv-id="send-new-message"], '
-                'button[gv-id="send-new-message"], '
-                'div[gv-id="send-new-message"]'
-            ).first
-            await new_msg_btn.click(timeout=5000)
-            await asyncio.sleep(1.5)
-        except Exception:
-            # Try the floating action button
-            try:
-                fab = self.page.locator('button[aria-label*="new"], gv-icon-button[icon="message"]').first
-                await fab.click(timeout=5000)
-                await asyncio.sleep(1.5)
-            except Exception:
-                return "Couldn't find the new message button. Make sure Google Voice is loaded in the browser."
+        # Navigate directly to the conversation — no button clicking needed
+        await self.page.goto(self._text_url(phone_number), wait_until="domcontentloaded")
+        await asyncio.sleep(2.5)
 
-        # Type the recipient
-        recipient = phone_number or contact_name
-        try:
-            to_field = self.page.locator(
-                'input[aria-label="Type a name or phone number"], '
-                'gv-recipient-picker input, '
-                'input[placeholder*="name or phone"]'
-            ).first
-            await to_field.click(timeout=5000)
-            await to_field.fill(recipient)
-            await asyncio.sleep(1.5)
-
-            # Select the first suggestion or press Enter for phone numbers
-            if phone_number:
-                await self.page.keyboard.press("Enter")
-            else:
-                # Click first suggestion
-                try:
-                    suggestion = self.page.locator(
-                        'gv-contact-list-item, '
-                        'div[role="option"], '
-                        'md-autocomplete-parent-scope md-item-content'
-                    ).first
-                    await suggestion.click(timeout=3000)
-                except Exception:
-                    await self.page.keyboard.press("Enter")
-
-            await asyncio.sleep(1)
-        except Exception as e:
-            return f"Couldn't enter recipient: {str(e)[:80]}"
-
-        # Type the message
+        # Find the message textarea
         try:
             msg_field = self.page.locator(
                 'textarea[aria-label="Type a message"], '
-                'input[aria-label="Type a message"], '
-                'div[contenteditable="true"][aria-label*="message"]'
+                'textarea[aria-label*="message"], '
+                'div[contenteditable="true"][aria-label*="message"], '
+                'gv-message-input textarea'
             ).first
-            await msg_field.click(timeout=5000)
+            await msg_field.click(timeout=6000)
             await msg_field.fill(message)
             await asyncio.sleep(0.5)
         except Exception as e:
-            return f"Couldn't type message: {str(e)[:80]}"
+            return f"❌ Couldn't find message input after navigating to conversation: {str(e)[:80]}"
 
-        # Click send
+        # Send
         try:
             send_btn = self.page.locator(
                 'button[aria-label="Send message"], '
-                'gv-icon-button[aria-label="Send message"], '
-                'button[aria-label="Send"]'
+                'button[aria-label="Send"], '
+                'gv-icon-button[aria-label="Send message"]'
             ).first
-            await send_btn.click(timeout=5000)
-            await asyncio.sleep(2)
+            await send_btn.click(timeout=4000)
         except Exception:
-            # Try pressing Enter
             await self.page.keyboard.press("Enter")
-            await asyncio.sleep(2)
 
-        return f"Text sent to {recipient}: {message[:80]}"
+        await asyncio.sleep(1)
+        return f"✅ Text sent to {label}: {message[:80]}"
 
     # ================================================================
     # Read Recent Texts
@@ -262,54 +226,60 @@ class GoogleVoicePlugin(BasePlugin):
 
     async def _read_conversation(self, params: dict) -> str:
         contact_name = params.get("contact_name", "")
+        phone_number = params.get("phone_number", "")
         limit = int(params.get("limit", 10))
 
-        if not contact_name:
-            return "Which conversation? Give me a contact name."
+        if not contact_name and not phone_number:
+            return "Which conversation? Give me a contact name or phone number."
 
-        await self.page.goto(self._gv_url("messages"), wait_until="domcontentloaded")
-        await asyncio.sleep(2)
-
-        # Click the conversation matching the contact name
-        try:
-            conv = self.page.locator(f'text="{contact_name}"').first
-            await conv.click(timeout=5000)
+        # Navigate directly when we have a phone number; otherwise search the list
+        if phone_number:
+            await self.page.goto(self._text_url(phone_number), wait_until="domcontentloaded")
+            await asyncio.sleep(2.5)
+            label = contact_name or phone_number
+        else:
+            label = contact_name
+            await self.page.goto(self._gv_url("messages"), wait_until="domcontentloaded")
             await asyncio.sleep(2)
-        except Exception:
-            # Try searching
             try:
-                search = self.page.locator('input[aria-label="Search"]').first
-                await search.click()
-                await search.fill(contact_name)
-                await asyncio.sleep(2)
-                result = self.page.locator(f'text="{contact_name}"').first
-                await result.click(timeout=5000)
+                conv = self.page.locator(f'text="{contact_name}"').first
+                await conv.click(timeout=5000)
                 await asyncio.sleep(2)
             except Exception:
-                return f"Couldn't find conversation with '{contact_name}'"
+                try:
+                    search = self.page.locator('input[aria-label="Search"]').first
+                    await search.click()
+                    await search.fill(contact_name)
+                    await asyncio.sleep(2)
+                    result = self.page.locator(f'text="{contact_name}"').first
+                    await result.click(timeout=5000)
+                    await asyncio.sleep(2)
+                except Exception:
+                    return f"❌ Couldn't find conversation with '{contact_name}'"
 
-        # Read messages
         messages = await self.page.evaluate(f"""
             () => {{
                 const results = [];
-                const msgElements = document.querySelectorAll(
-                    'gv-text-message-item, div[gv-id="text-message"], div[class*="message-row"]'
-                );
-                const start = Math.max(0, msgElements.length - {limit});
-                for (let i = start; i < msgElements.length; i++) {{
-                    const el = msgElements[i];
-                    const text = el.querySelector('[gv-id="message-text"], div[class*="text-content"]')?.textContent?.trim() ||
-                                 el.textContent?.trim() || '';
-                    const time = el.querySelector('[gv-id="timestamp"], time')?.textContent?.trim() || '';
-                    const isMe = el.classList.contains('outgoing') ||
-                                 el.querySelector('[gv-id="outgoing"]') !== null ||
-                                 el.getAttribute('class')?.includes('outgoing');
+
+                // Primary: gv-text-message-item elements (Google Voice's own component)
+                let els = document.querySelectorAll('gv-text-message-item');
+
+                // Fallback: any element with a gv-id pointing to message text
+                if (els.length === 0) {{
+                    els = document.querySelectorAll('[gv-id="text-message"], div[class*="message-row"]');
+                }}
+
+                const slice = Array.from(els).slice(-{limit});
+                for (const el of slice) {{
+                    const text = el.querySelector('[gv-id="message-text"]')?.textContent?.trim() ||
+                                 el.querySelector('div[class*="text-content"]')?.textContent?.trim() ||
+                                 el.querySelector('span')?.textContent?.trim() || '';
+                    const time = el.querySelector('[gv-id="timestamp"]')?.textContent?.trim() ||
+                                 el.querySelector('time')?.textContent?.trim() || '';
+                    const cls = el.getAttribute('class') || '';
+                    const isMe = cls.includes('outgoing') || !!el.querySelector('[gv-id="outgoing"]');
                     if (text) {{
-                        results.push({{
-                            text: text.substring(0, 300),
-                            time,
-                            from_me: isMe
-                        }});
+                        results.push({{ text: text.substring(0, 400), time, from_me: isMe }});
                     }}
                 }}
                 return results;
@@ -317,12 +287,13 @@ class GoogleVoicePlugin(BasePlugin):
         """)
 
         if not messages:
-            return f"Couldn't read messages with {contact_name}. The conversation layout may have changed."
+            return f"❌ No messages found in conversation with '{label}'. The page may still be loading."
 
-        lines = [f"Conversation with {contact_name}:\n"]
+        lines = [f"Conversation with {label}:\n"]
         for m in messages:
-            sender = "You" if m.get("from_me") else contact_name
-            lines.append(f"  [{m.get('time', '')}] {sender}: {m['text']}")
+            sender = "You" if m.get("from_me") else label
+            time_str = f"[{m['time']}] " if m.get("time") else ""
+            lines.append(f"  {time_str}{sender}: {m['text']}")
         return "\n".join(lines)
 
     # ================================================================
@@ -336,52 +307,36 @@ class GoogleVoicePlugin(BasePlugin):
         if not phone_number and not contact_name:
             return "Who should I call? Give me a phone number or contact name."
 
-        recipient = phone_number or contact_name
+        label = contact_name or phone_number
 
         await self.page.goto(self._gv_url("calls"), wait_until="domcontentloaded")
         await asyncio.sleep(3)
 
-        # Log every button on the page so we know exactly what's there
-        buttons_info = await self.page.evaluate("""
-            () => {
-                const btns = document.querySelectorAll('button');
-                return Array.from(btns).map(b => ({
-                    label: b.getAttribute('aria-label') || '',
-                    text: b.textContent.trim().substring(0, 40),
-                    cls: b.className.substring(0, 60)
-                }));
-            }
-        """)
-        logger.info(f"[gvoice] Buttons on calls page: {buttons_info}")
-
-        # JavaScript-based click — works regardless of selector syntax
+        # Click the "New call" / dialpad button
         clicked = await self.page.evaluate("""
             () => {
-                // Try by aria-label first
-                const labels = ['New call', 'Make a call', 'New Call', 'Call', 'Dialpad', 'dial'];
-                for (const label of labels) {
-                    const btn = document.querySelector('button[aria-label="' + label + '"]');
-                    if (btn) { btn.click(); return 'label:' + label; }
+                // Exact aria-label matches
+                for (const lbl of ['New call', 'Make a call', 'New Call', 'Dialpad', 'Call']) {
+                    const btn = document.querySelector(`button[aria-label="${lbl}"]`);
+                    if (btn) { btn.click(); return lbl; }
                 }
-                // Try partial aria-label match
+                // Partial aria-label match
                 for (const btn of document.querySelectorAll('button[aria-label]')) {
                     const lbl = btn.getAttribute('aria-label').toLowerCase();
                     if (lbl.includes('call') || lbl.includes('dial')) {
-                        btn.click(); return 'partial:' + lbl;
+                        btn.click(); return lbl;
                     }
                 }
-                // Try FAB / floating action button
-                for (const sel of ['button.mat-fab', 'button.mdc-fab', 'button.mat-mdc-fab',
-                                    'button[class*="fab"]', 'button[class*="Fab"]']) {
+                // FAB (floating action button)
+                for (const sel of ['button.mat-mdc-fab', 'button.mat-fab', 'button.mdc-fab', 'button[class*="fab"]']) {
                     const btn = document.querySelector(sel);
-                    if (btn) { btn.click(); return 'fab:' + sel; }
+                    if (btn) { btn.click(); return sel; }
                 }
-                // Try mat-icon with call/phone text
+                // mat-icon fallback
                 for (const icon of document.querySelectorAll('mat-icon')) {
-                    const t = icon.textContent.trim();
-                    if (['add_call','call','phone','dialpad'].includes(t)) {
+                    if (['add_call','call','phone','dialpad'].includes(icon.textContent.trim())) {
                         const btn = icon.closest('button');
-                        if (btn) { btn.click(); return 'icon:' + t; }
+                        if (btn) { btn.click(); return 'icon:' + icon.textContent.trim(); }
                     }
                 }
                 return null;
@@ -389,66 +344,46 @@ class GoogleVoicePlugin(BasePlugin):
         """)
 
         if not clicked:
-            return (
-                f"Couldn't find the new call button. "
-                f"Check nexus.log for the button list — it shows every button on the page so we can add the right selector."
-            )
+            return "❌ Couldn't find the new call button on the Google Voice calls page."
 
-        logger.info(f"[gvoice] Clicked dial button via: {clicked}")
+        logger.info(f"[gvoice] Clicked call button via: {clicked}")
         await asyncio.sleep(2)
 
-        # Find the phone input that appeared and fill it
-        filled = await self.page.evaluate(f"""
-            () => {{
-                const selectors = [
-                    'input[aria-label*="phone"]',
-                    'input[aria-label*="Phone"]',
-                    'input[aria-label*="name or phone"]',
-                    'input[placeholder*="phone"]',
-                    'input[placeholder*="Phone"]',
-                    'input[type="tel"]',
-                    'input[class*="dial"]',
-                    'input[class*="Dial"]',
-                    'input'
-                ];
-                for (const sel of selectors) {{
-                    const inp = document.querySelector(sel);
-                    if (inp && inp.offsetParent !== null) {{
-                        inp.focus();
-                        inp.value = '{recipient}';
-                        inp.dispatchEvent(new Event('input', {{bubbles: true}}));
-                        inp.dispatchEvent(new Event('change', {{bubbles: true}}));
-                        return sel;
-                    }}
-                }}
-                return null;
-            }}
-        """)
+        # Type the number into whichever input appeared
+        number_to_type = self._normalize_phone(phone_number) if phone_number else contact_name
+        try:
+            inp = self.page.locator(
+                'input[aria-label*="phone" i], '
+                'input[aria-label*="name or phone" i], '
+                'input[placeholder*="phone" i], '
+                'input[type="tel"]'
+            ).first
+            await inp.click(timeout=4000)
+            await inp.fill(number_to_type)
+        except Exception:
+            # If no input found, type directly — some dialers capture keyboard focus
+            await self.page.keyboard.type(number_to_type, delay=60)
 
-        if not filled:
-            return f"Dialer opened but couldn't find number input. Number the button via: {clicked}"
-
-        logger.info(f"[gvoice] Filled input via: {filled}")
         await asyncio.sleep(1)
 
-        # Press Enter or find and click a Call/Dial confirm button
+        # Confirm the call
         confirmed = await self.page.evaluate("""
             () => {
                 for (const btn of document.querySelectorAll('button')) {
                     const lbl = (btn.getAttribute('aria-label') || '').toLowerCase();
                     const txt = btn.textContent.trim().toLowerCase();
                     if (lbl === 'call' || lbl === 'dial' || txt === 'call' || txt === 'dial') {
-                        btn.click(); return 'btn:' + (lbl || txt);
+                        btn.click(); return true;
                     }
                 }
-                return null;
+                return false;
             }
         """)
         if not confirmed:
             await self.page.keyboard.press("Enter")
 
         await asyncio.sleep(2)
-        return f"Calling {recipient} via Google Voice..."
+        return f"📞 Calling {label} via Google Voice..."
 
     # ================================================================
     # Check Voicemail

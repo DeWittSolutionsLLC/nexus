@@ -4,3 +4,10 @@ __pycache__/
 *.log
 .env
 node_modules/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

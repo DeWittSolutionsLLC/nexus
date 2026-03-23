@@ -154,27 +154,40 @@ class WhatsAppAutoPlugin(BasePlugin):
         if not await self._open_chat(contact_name):
             return f"❌ Couldn't find chat with '{contact_name}'"
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(1.5)
 
-        # Extract messages from the chat panel
         messages = await self.page.evaluate(f"""
             () => {{
-                const msgElements = document.querySelectorAll('div.message-in, div.message-out, div[data-pre-plain-text]');
                 const results = [];
-                
-                // Fallback: get all message rows
-                const rows = document.querySelectorAll('div[role="row"]');
-                for (let i = Math.max(0, rows.length - {limit}); i < rows.length; i++) {{
-                    const row = rows[i];
-                    const text = row.querySelector('span.selectable-text')?.textContent || '';
-                    const meta = row.querySelector('div[data-pre-plain-text]')?.getAttribute('data-pre-plain-text') || '';
-                    const isOut = row.querySelector('.message-out') !== null;
+
+                // Primary: elements with data-pre-plain-text carry sender + timestamp metadata
+                // Format: "[HH:MM, DD/MM/YYYY] Sender Name: "
+                const withMeta = document.querySelectorAll('[data-pre-plain-text]');
+                if (withMeta.length > 0) {{
+                    const slice = Array.from(withMeta).slice(-{limit});
+                    for (const el of slice) {{
+                        const meta = el.getAttribute('data-pre-plain-text') || '';
+                        const textEl = el.querySelector('span.selectable-text') ||
+                                       el.querySelector('span.copyable-text');
+                        const text = textEl ? (textEl.innerText || textEl.textContent || '').trim() : '';
+                        const isOut = !!el.closest('.message-out');
+                        if (text) {{
+                            results.push({{ text: text.substring(0, 400), meta, from_me: isOut }});
+                        }}
+                    }}
+                    if (results.length > 0) return results;
+                }}
+
+                // Fallback: scan .message-in / .message-out bubbles directly
+                const bubbles = document.querySelectorAll('.message-in, .message-out');
+                const slice = Array.from(bubbles).slice(-{limit});
+                for (const el of slice) {{
+                    const textEl = el.querySelector('span.selectable-text') ||
+                                   el.querySelector('span.copyable-text');
+                    const text = textEl ? (textEl.innerText || textEl.textContent || '').trim() : '';
+                    const isOut = el.classList.contains('message-out') || !!el.closest('.message-out');
                     if (text) {{
-                        results.push({{
-                            text: text.substring(0, 300),
-                            meta: meta,
-                            from_me: isOut
-                        }});
+                        results.push({{ text: text.substring(0, 400), meta: '', from_me: isOut }});
                     }}
                 }}
                 return results;
@@ -182,11 +195,21 @@ class WhatsAppAutoPlugin(BasePlugin):
         """)
 
         if not messages:
-            return f"Couldn't read messages from {contact_name}. The chat might use a different layout."
+            return f"❌ No messages found in chat with '{contact_name}'. The chat may be empty or still loading."
+
+        def parse_sender(meta: str, fallback: str) -> str:
+            # meta format: "[HH:MM, DD/MM/YYYY] Sender: "
+            try:
+                return meta.split("] ", 1)[1].rstrip(": ").strip()
+            except Exception:
+                return fallback
 
         lines = []
-        for m in messages[-limit:]:
-            sender = "You" if m.get("from_me") else contact_name
+        for m in messages:
+            if m.get("from_me"):
+                sender = "You"
+            else:
+                sender = parse_sender(m.get("meta", ""), contact_name)
             lines.append(f"  {sender}: {m['text']}")
 
         return f"💬 Chat with {contact_name} (last {len(lines)} messages):\n\n" + "\n".join(lines)
@@ -194,23 +217,37 @@ class WhatsAppAutoPlugin(BasePlugin):
     async def _list_chats(self, params: dict) -> str:
         limit = int(params.get("limit", 10))
 
-        # Make sure we're on the main chat list
+        # Return to the main chat list
         await self.page.keyboard.press("Escape")
         await asyncio.sleep(0.5)
 
         chats = await self.page.evaluate(f"""
             () => {{
-                const chatItems = document.querySelectorAll('div[role="listitem"]');
                 const results = [];
-                for (let i = 0; i < Math.min(chatItems.length, {limit}); i++) {{
-                    const item = chatItems[i];
-                    const name = item.querySelector('span[dir="auto"][title]')?.getAttribute('title') || '';
-                    const lastMsg = item.querySelector('span[dir="ltr"]')?.textContent || 
-                                    item.querySelector('div.Dvjam span')?.textContent || '';
-                    const time = item.querySelector('div._aK7, div[class*="Timestamp"]')?.textContent || '';
-                    const unread = item.querySelector('span[data-testid="icon-unread-count"]')?.textContent || '';
+
+                // Each chat row is a listitem; stable attributes used where possible
+                const items = document.querySelectorAll('div[role="listitem"]');
+                for (let i = 0; i < Math.min(items.length, {limit}); i++) {{
+                    const item = items[i];
+
+                    // Contact/group name — title attribute is the most stable
+                    const name = item.querySelector('span[dir="auto"][title]')?.getAttribute('title') ||
+                                 item.querySelector('span[dir="auto"]')?.textContent?.trim() || '';
+
+                    // Last message preview
+                    const lastMsg = item.querySelector('span[data-testid="last-msg-status"]')?.textContent?.trim() ||
+                                    item.querySelector('div[data-testid="last-message-preview"]')?.textContent?.trim() ||
+                                    item.querySelector('span[dir="ltr"]')?.textContent?.trim() || '';
+
+                    // Timestamp
+                    const time = item.querySelector('span[data-testid="cell-frame-primary-detail"]')?.textContent?.trim() ||
+                                 item.querySelector('div[class*="cell-frame-primary"]')?.textContent?.trim() || '';
+
+                    // Unread badge
+                    const unread = item.querySelector('span[data-testid="icon-unread-count"]')?.textContent?.trim() || '';
+
                     if (name) {{
-                        results.push({{ name, lastMsg: lastMsg.substring(0, 60), time, unread }});
+                        results.push({{ name, lastMsg: lastMsg.substring(0, 80), time, unread }});
                     }}
                 }}
                 return results;
@@ -218,12 +255,13 @@ class WhatsAppAutoPlugin(BasePlugin):
         """)
 
         if not chats:
-            return "Couldn't read chat list. Make sure WhatsApp Web is loaded."
+            return "❌ Couldn't read chat list. Make sure WhatsApp Web is fully loaded."
 
         lines = []
         for c in chats:
             badge = f" 🔵({c['unread']})" if c.get("unread") else ""
-            preview = c["lastMsg"][:50] if c["lastMsg"] else ""
-            lines.append(f"  {c['name']}{badge}: {preview}")
+            time_str = f" [{c['time']}]" if c.get("time") else ""
+            preview = c["lastMsg"] if c["lastMsg"] else "(no preview)"
+            lines.append(f"  {c['name']}{badge}{time_str}: {preview}")
 
-        return f"💬 Recent WhatsApp chats:\n\n" + "\n".join(lines)
+        return "💬 Recent WhatsApp chats:\n\n" + "\n".join(lines)

@@ -90,7 +90,7 @@ class PluginManager:
         self.plugins[instance.name] = instance
         logger.info(f"Loaded plugin: {instance.name} — {instance.description}")
 
-    async def connect_all(self):
+    async def connect_all(self, on_plugin_connected=None):
         """Connect all plugins in parallel — ~3x faster than sequential."""
         import asyncio
 
@@ -101,6 +101,8 @@ class PluginManager:
             except Exception as e:
                 plugin._status_message = f"Error: {str(e)[:60]}"
                 logger.error(f"✗ {name} error: {e}")
+            if on_plugin_connected:
+                on_plugin_connected()
 
         await asyncio.gather(*[_one(n, p) for n, p in self.plugins.items()])
 
