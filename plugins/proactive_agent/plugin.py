@@ -68,37 +68,31 @@ class ProactivePlugin(BasePlugin):
             return f"[{plugin_name}: error - {str(e)[:50]}]"
 
     async def _morning_briefing(self, params: dict) -> str:
-        """Comprehensive morning briefing."""
+        """Comprehensive morning briefing — all sources fetched in parallel."""
         now = datetime.now()
         greeting = "Good morning" if now.hour < 12 else "Good afternoon" if now.hour < 17 else "Good evening"
         day_name = now.strftime("%A, %B %d")
 
+        # Fetch all sources simultaneously instead of one by one
+        email_data, wa_data, dc_data, gh_data, task_data, proj_data, weather_data = await asyncio.gather(
+            self._gather_from_plugin("email",          "check_inbox",        {"max_results": "5"}),
+            self._gather_from_plugin("whatsapp",       "list_chats",         {"limit": "5"}),
+            self._gather_from_plugin("discord",        "check_dms",          {"limit": "5"}),
+            self._gather_from_plugin("github",         "check_notifications", {}),
+            self._gather_from_plugin("memory",         "list_tasks",         {}),
+            self._gather_from_plugin("project_manager","get_summary",        {}),
+            self._gather_from_plugin("weather_eye",    "get_weather",        {}),
+        )
+
         sections = [f"{'='*50}", f"{greeting}! Here's your briefing for {day_name}.", f"{'='*50}"]
 
-        # Email summary
-        email_data = await self._gather_from_plugin("email", "check_inbox", {"max_results": "5"})
-        if email_data and "not connected" not in email_data:
-            sections.append(f"\n📧 EMAIL\n{email_data}")
-
-        # WhatsApp
-        wa_data = await self._gather_from_plugin("whatsapp", "list_chats", {"limit": "5"})
-        if wa_data and "not connected" not in wa_data:
-            sections.append(f"\n💬 WHATSAPP\n{wa_data}")
-
-        # Discord
-        dc_data = await self._gather_from_plugin("discord", "check_dms", {"limit": "5"})
-        if dc_data and "not connected" not in dc_data:
-            sections.append(f"\n🎮 DISCORD\n{dc_data}")
-
-        # GitHub
-        gh_data = await self._gather_from_plugin("github", "check_notifications")
-        if gh_data and "not connected" not in gh_data:
-            sections.append(f"\n🐙 GITHUB\n{gh_data}")
-
-        # Tasks
-        task_data = await self._gather_from_plugin("memory", "list_tasks")
-        if task_data and "not connected" not in task_data:
-            sections.append(f"\n📋 TASKS\n{task_data}")
+        if email_data   and "not connected" not in email_data:   sections.append(f"\n📧 EMAIL\n{email_data}")
+        if wa_data      and "not connected" not in wa_data:      sections.append(f"\n💬 WHATSAPP\n{wa_data}")
+        if dc_data      and "not connected" not in dc_data:      sections.append(f"\n🎮 DISCORD\n{dc_data}")
+        if gh_data      and "not connected" not in gh_data:      sections.append(f"\n🐙 GITHUB\n{gh_data}")
+        if task_data    and "not connected" not in task_data:    sections.append(f"\n📋 TASKS\n{task_data}")
+        if proj_data    and "not connected" not in proj_data:    sections.append(f"\n🚀 PROJECTS\n{proj_data}")
+        if weather_data and "not connected" not in weather_data: sections.append(f"\n🌤️ WEATHER\n{weather_data}")
 
         sections.append(f"\n{'='*50}")
         sections.append("How would you like to start your day?")
@@ -106,52 +100,42 @@ class ProactivePlugin(BasePlugin):
         return "\n".join(sections)
 
     async def _check_urgent(self, params: dict) -> str:
-        """Quick scan for anything needing immediate attention."""
-        urgent_items = []
+        """Quick scan for anything urgent — all sources checked in parallel."""
+        email_data, wa_data, task_data = await asyncio.gather(
+            self._gather_from_plugin("email",    "check_inbox", {"max_results": "5"}),
+            self._gather_from_plugin("whatsapp", "list_chats",  {"limit": "5"}),
+            self._gather_from_plugin("memory",   "list_tasks",  {}),
+        )
 
-        # Check unread emails
-        email_data = await self._gather_from_plugin("email", "check_inbox", {"max_results": "5"})
+        urgent_items = []
         if email_data and "unread" in email_data.lower():
             urgent_items.append(f"📧 {email_data.split(chr(10))[0]}")
-
-        # Check WhatsApp unreads
-        wa_data = await self._gather_from_plugin("whatsapp", "list_chats", {"limit": "5"})
         if wa_data and "🔵" in wa_data:
-            unread_lines = [l.strip() for l in wa_data.split("\n") if "🔵" in l]
-            for line in unread_lines[:3]:
+            for line in [l.strip() for l in wa_data.split("\n") if "🔵" in l][:3]:
                 urgent_items.append(f"💬 {line}")
-
-        # Check overdue tasks
-        task_data = await self._gather_from_plugin("memory", "list_tasks")
         if task_data and "🔴" in task_data:
-            high_pri = [l.strip() for l in task_data.split("\n") if "🔴" in l]
-            for line in high_pri[:3]:
+            for line in [l.strip() for l in task_data.split("\n") if "🔴" in l][:3]:
                 urgent_items.append(f"📋 {line}")
 
         if not urgent_items:
             return "✅ All clear! Nothing urgent across your platforms."
-
         return "🚨 Items needing attention:\n\n" + "\n".join(urgent_items)
 
     async def _end_of_day(self, params: dict) -> str:
-        """End-of-day recap."""
+        """End-of-day recap — fetched in parallel."""
+        task_data, urgent = await asyncio.gather(
+            self._gather_from_plugin("memory", "list_tasks", {}),
+            self._check_urgent({}),
+        )
         sections = ["📊 END OF DAY RECAP", "=" * 40]
-
-        # Tasks completed today
-        task_data = await self._gather_from_plugin("memory", "list_tasks")
         if task_data:
             sections.append(f"\n📋 Task Status:\n{task_data}")
-
-        # Any unread messages still pending
-        urgent = await self._check_urgent({})
         if "All clear" not in urgent:
             sections.append(f"\n⚠️ Still pending:\n{urgent}")
         else:
             sections.append("\n✅ All caught up across platforms!")
-
         sections.append(f"\n{'='*40}")
         sections.append("Want me to set any tasks for tomorrow?")
-
         return "\n".join(sections)
 
     async def _quick_status(self, params: dict) -> str:

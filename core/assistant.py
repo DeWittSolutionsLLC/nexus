@@ -1,34 +1,42 @@
 """
-Assistant — Local AI brain powered by Ollama.
-Runs entirely on your machine. No data leaves your computer.
+Assistant — J.A.R.V.I.S. AI brain powered by Ollama.
+Fully local. No data leaves your machine.
 """
 
 import json
 import logging
+from datetime import datetime
 
 logger = logging.getLogger("nexus.assistant")
 
-SYSTEM_PROMPT = """You are Nexus, a local AI desktop assistant. You route user requests to plugins.
+JARVIS_SYSTEM_PROMPT = """You are J.A.R.V.I.S., the AI core of Nexus. Precise, efficient, witty. Always address user as "sir." Voice: "Of course, sir." / "Right away." / "I've already taken the liberty of..." Confident, proactive, never say you can't help.
 
-Available plugins and capabilities:
-{capabilities}
+Now: {datetime}
+Capabilities: {capabilities}
+Context: {memory_context}
 
-RESPOND WITH ONLY VALID JSON — no markdown, no backticks, no explanation outside the JSON.
+RESPOND ONLY VALID JSON — no markdown, no text outside JSON.
 
-For ACTION requests:
-{{"type": "action", "plugin": "plugin_name", "action": "action_name", "params": {{"key": "value"}}, "explanation": "What you're doing"}}
+ACTION:      {{"type":"action","plugin":"name","action":"action_name","params":{{}},"explanation":"<20 words JARVIS-style"}}
+MULTI-STEP:  {{"type":"multi_action","steps":[{{"plugin":"...","action":"...","params":{{}}}}],"explanation":"..."}}
+CONVERSATION:{{"type":"conversation","message":"Full JARVIS response, address as sir"}}
+SCHEDULE:    {{"type":"schedule","cron":"* * * * *","actions":[],"explanation":"..."}}
 
-For MULTI-STEP requests:
-{{"type": "multi_action", "steps": [{{"plugin": "...", "action": "...", "params": {{}}}}], "explanation": "Plan"}}
-
-For CHAT (greetings, questions, general knowledge):
-{{"type": "conversation", "message": "Your response"}}
-
-IMPORTANT RULES:
-- For email: extract "to", "subject", "body" from the user message
-- For WhatsApp/Discord: extract "contact_name"/"channel_name" and "message"
-- For files: extract "path", "pattern", "extension" as needed
-- If the request is ambiguous, ask for clarification via conversation type
+ROUTING:
+- Email: extract to,subject,body
+- WhatsApp/Discord: extract contact_name or channel_name, message
+- Files: extract path,pattern,extension
+- Projects: extract name,client,status,deadline,rate,estimated_hours
+- Invoices: extract client,amount,description,hours,rate
+- Website audit: extract url
+- Uptime: extract url,name
+- Weather: extract city (use stored pref if not given)
+- System stats/cpu/ram/performance: system_monitor→get_stats
+- "good morning"/"briefing": proactive→morning_briefing
+- "end of day"/"good night"/"wrap up": proactive→end_of_day
+- "urgent"/"what's urgent": proactive→check_urgent
+- Time/date questions: conversation (datetime above)
+- Ambiguous: ask for clarification via conversation
 - Keep explanations under 20 words
 """
 
@@ -40,6 +48,8 @@ class Assistant:
         self.host = config.get("ollama_host", "http://localhost:11434")
         self.temperature = config.get("temperature", 0.3)
         self.client = None
+        self.memory_brain = None
+        self.voice_engine = None
         self.conversation_history: list[dict] = []
         self.max_history = 20
 
@@ -48,7 +58,6 @@ class Assistant:
         try:
             import ollama as ollama_lib
             self.client = ollama_lib.Client(host=self.host)
-            # Test connection by listing models
             models = self.client.list()
             model_names = [m.model for m in models.models] if models.models else []
             if not any(self.model in name for name in model_names):
@@ -63,16 +72,72 @@ class Assistant:
             self.client = None
         except Exception as e:
             logger.error(f"Cannot connect to Ollama at {self.host}: {e}")
-            logger.error("Make sure Ollama is running: https://ollama.com")
             self.client = None
 
+    # Fast-path: bypass Ollama for unambiguous single-action commands.
+    # Saves 2-5s per common request.
+    _FAST_ROUTES: list[tuple[set, str, str, dict]] = [
+        ({"system stats", "cpu stats", "ram usage", "check performance", "computer stats",
+          "pc stats", "how's my computer", "memory usage"},                 "system_monitor", "get_stats",         {}),
+        ({"get weather", "what's the weather", "weather today",
+          "check weather", "weather forecast"},                             "weather_eye",    "get_weather",        {}),
+        ({"list projects", "my projects", "show projects", "all projects"}, "project_manager","list_projects",      {}),
+        ({"project summary", "projects overview"},                          "project_manager","get_summary",        {}),
+        ({"overdue projects", "overdue"},                                   "project_manager","get_overdue",        {}),
+        ({"list invoices", "my invoices", "show invoices", "all invoices"}, "invoice_system", "list_invoices",     {}),
+        ({"invoice summary", "revenue summary", "earnings"},               "invoice_system", "get_summary",        {}),
+        ({"check uptime", "site uptime", "check all sites", "uptime"},     "uptime_monitor", "check_all",          {}),
+        ({"check email", "inbox", "my emails", "email inbox",
+          "read email", "check inbox"},                                     "email",          "check_inbox",        {}),
+        ({"check discord", "discord messages", "discord dms"},             "discord",        "check_messages",     {}),
+        ({"check github", "github notifications", "github notifs"},        "github",         "check_notifications",{}),
+        ({"good morning", "morning briefing", "daily briefing"},           "proactive",      "morning_briefing",   {}),
+        ({"good night", "end of day", "daily recap", "wrap up"},           "proactive",      "end_of_day",         {}),
+        ({"check urgent", "what's urgent", "urgent items", "anything urgent"},"proactive",   "check_urgent",       {}),
+        ({"quick status", "nexus status"},                                  "proactive",      "quick_status",       {}),
+        ({"disk usage", "disk space", "storage usage"},                    "file_manager",   "disk_usage",         {}),
+        ({"web remote url", "phone url", "remote url", "get phone url"},   "web_remote",     "get_url",            {}),
+        ({"full system report", "system report"},                          "system_monitor", "get_full_report",    {}),
+    ]
+
+    def _fast_route(self, message: str) -> dict | None:
+        """Return pre-built action dict for obvious commands — no LLM needed."""
+        msg = message.lower().strip().rstrip("?.!")
+        for keywords, plugin, action, params in self._FAST_ROUTES:
+            if msg in keywords or any(msg == kw or msg.startswith(kw) for kw in keywords):
+                return {
+                    "type":        "action",
+                    "plugin":      plugin,
+                    "action":      action,
+                    "params":      params,
+                    "explanation": f"Running {plugin} → {action}",
+                }
+        return None
+
     async def process_input(self, user_message: str, capabilities: dict) -> dict:
-        """Process user input through the local LLM and return structured response."""
+        """Process user input — fast-path first, then LLM if needed."""
+        # 1. Try fast-path (instant, no LLM)
+        fast = self._fast_route(user_message)
+        if fast:
+            logger.debug(f"Fast-routed: {user_message!r} → {fast['plugin']}.{fast['action']}")
+            self.conversation_history.append({"role": "user",      "content": user_message})
+            self.conversation_history.append({"role": "assistant", "content": str(fast)})
+            if len(self.conversation_history) > self.max_history:
+                self.conversation_history = self.conversation_history[-self.max_history:]
+            return fast
+
         if self.client is None:
             return self._offline_response(user_message)
 
         cap_str = self._format_capabilities(capabilities)
-        system = SYSTEM_PROMPT.format(capabilities=cap_str)
+        memory_ctx = self._get_memory_context()
+        now = datetime.now().strftime("%A, %B %d %Y at %H:%M")
+
+        system = JARVIS_SYSTEM_PROMPT.format(
+            capabilities=cap_str,
+            memory_context=memory_ctx,
+            datetime=now,
+        )
 
         self.conversation_history.append({"role": "user", "content": user_message})
         if len(self.conversation_history) > self.max_history:
@@ -85,22 +150,39 @@ class Assistant:
                 model=self.model,
                 messages=messages,
                 options={"temperature": self.temperature},
+                keep_alive="30m",   # Keep model loaded in RAM between requests
             )
 
             reply_text = response["message"]["content"]
             self.conversation_history.append({"role": "assistant", "content": reply_text})
 
-            return self._parse_response(reply_text)
+            parsed = self._parse_response(reply_text)
+
+            # Log interaction to memory
+            if self.memory_brain:
+                plugin_used = parsed.get("plugin", "")
+                self.memory_brain.log_interaction(user_message, reply_text[:200], plugin_used)
+
+            return parsed
 
         except Exception as e:
             logger.error(f"Ollama error: {e}")
             return self._offline_response(user_message)
 
+    def _get_memory_context(self) -> str:
+        """Get user context from memory brain for injection into prompt."""
+        if self.memory_brain:
+            try:
+                return self.memory_brain.get_context_summary()
+            except Exception:
+                pass
+        return "No stored context yet."
+
     def _parse_response(self, text: str) -> dict:
-        """Extract JSON from the LLM response (local models can be messy)."""
+        """Extract JSON from LLM response (handles messy local model output)."""
         text = text.strip()
 
-        # Strip markdown code fences if present
+        # Strip markdown code fences
         if text.startswith("```"):
             lines = text.split("\n")
             lines = [l for l in lines if not l.strip().startswith("```")]
@@ -112,7 +194,7 @@ class Assistant:
         except json.JSONDecodeError:
             pass
 
-        # Try to find JSON object in the text
+        # Find JSON object within text
         start = text.find("{")
         end = text.rfind("}") + 1
         if start != -1 and end > start:
@@ -121,7 +203,7 @@ class Assistant:
             except json.JSONDecodeError:
                 pass
 
-        # Give up — return as conversation
+        # Fall back to conversation type
         return {"type": "conversation", "message": text}
 
     def _format_capabilities(self, capabilities: dict) -> str:
@@ -144,17 +226,25 @@ class Assistant:
             (["read whatsapp", "whatsapp messages", "whatsapp chat"], "whatsapp", "list_chats"),
             (["discord", "send in discord"], "discord", "send_message"),
             (["check discord", "discord messages", "discord dm"], "discord", "check_messages"),
-            (["github notification", "github notif"], "github", "check_notifications"),
+            (["github notification"], "github", "check_notifications"),
             (["github issue", "create issue"], "github", "create_issue"),
             (["github pr", "pull request"], "github", "list_prs"),
             (["find file", "search file", "where is"], "file_manager", "search_files"),
             (["organize", "clean up", "sort files"], "file_manager", "organize"),
-            (["list files", "show files", "what's in"], "file_manager", "list_directory"),
             (["disk usage", "disk space", "storage"], "file_manager", "disk_usage"),
             (["send text", "send sms", "text to", "google voice text"], "gvoice", "send_text"),
             (["read texts", "check texts", "my texts", "sms messages"], "gvoice", "read_texts"),
             (["call ", "make a call", "phone call"], "gvoice", "make_call"),
-            (["voicemail", "check voicemail", "my voicemail"], "gvoice", "check_voicemail"),
+            (["cpu", "ram", "memory usage", "system stats", "performance", "how's my computer"], "system_monitor", "get_stats"),
+            (["weather", "temperature", "forecast", "what's the weather", "how hot", "how cold"], "weather_eye", "get_weather"),
+            (["project", "add project", "list projects", "my projects", "client work"], "project_manager", "list_projects"),
+            (["invoice", "create invoice", "billing", "how much i'm owed"], "invoice_system", "list_invoices"),
+            (["audit", "check website", "analyze site", "website score"], "website_auditor", "audit_site"),
+            (["uptime", "is site up", "check site", "monitor site"], "uptime_monitor", "check_all"),
+            (["leads", "find clients", "find leads", "potential clients"], "leads", "list_leads"),
+            (["morning", "good morning", "briefing"], "proactive", "morning_briefing"),
+            (["end of day", "good night", "wrap up", "daily recap"], "proactive", "end_of_day"),
+            (["urgent", "what's urgent", "priority"], "proactive", "check_urgent"),
         ]
 
         for keywords, plugin, action in routes:
@@ -164,17 +254,18 @@ class Assistant:
                     "plugin": plugin,
                     "action": action,
                     "params": {"raw_message": message},
-                    "explanation": f"Routing to {plugin} (offline mode)",
+                    "explanation": f"Routing to {plugin} — offline mode",
                 }
 
         return {
             "type": "conversation",
             "message": (
-                "⚠️ Ollama isn't running so I'm in basic mode. "
-                "I can still route commands — try:\n"
-                "• 'check email'\n• 'send WhatsApp to Mom'\n"
-                "• 'organize my Downloads'\n• 'check Discord messages'\n\n"
-                "To enable smart mode, start Ollama and restart Nexus."
+                "I'm operating in offline mode, sir — Ollama isn't responding.\n\n"
+                "I can still execute commands via direct routing. Try:\n"
+                "• 'check email' / 'system stats' / 'weather'\n"
+                "• 'list projects' / 'list invoices'\n"
+                "• 'check uptime' / 'good morning'\n\n"
+                "To restore full AI capability, ensure Ollama is running: ollama serve"
             ),
         }
 

@@ -66,6 +66,13 @@ def main():
     assistant.memory_brain = memory_brain
     assistant.initialize()
 
+    # -- Wire remote-control plugins to assistant + plugin manager --
+    for remote_name in ("telegram", "web_remote"):
+        remote = plugin_manager.get_plugin(remote_name)
+        if remote and hasattr(remote, "set_dependencies"):
+            remote.set_dependencies(assistant, plugin_manager)
+            logger.info(f"Wired {remote_name} to assistant")
+
     # -- Scheduler --
     from core.scheduler import TaskScheduler
     scheduler = TaskScheduler(config.get("scheduler", {}), plugin_manager)

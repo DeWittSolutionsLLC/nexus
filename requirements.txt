@@ -17,7 +17,7 @@ apscheduler>=3.10.0
 # Utilities
 pydantic>=2.5.0
 
-# Voice (optional - Nexus works without these, voice just won't activate)
+# Voice (optional — Nexus works without these, voice just won't activate)
 sounddevice>=0.4.6
 numpy>=1.24.0
 openai-whisper>=20240930
@@ -28,3 +28,13 @@ mss>=9.0.0
 
 # Memory fuzzy search (optional)
 rapidfuzz>=3.5.0
+
+# System Monitor — real-time CPU, RAM, disk stats
+psutil>=5.9.0
+
+# Website Auditor + Weather + Uptime Monitor + Telegram
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Web Remote (phone browser control)
+flask>=3.0.0

@@ -1,10 +1,10 @@
 {
-    "ai": {
-        "model": "llama3.1:8b",
-        "ollama_host": "http://localhost:11434",
-        "temperature": 0.3
-    },
-    "browser": {
+  "ai": {
+    "model": "llama3.1:8b",
+    "ollama_host": "http://localhost:11434",
+    "temperature": 0.3
+  },
+  "browser": {
     "headless": false,
     "user_data_dir": "./browser_data",
     "slow_mo": 50,
@@ -47,8 +47,30 @@
   "scheduler": {
     "timezone": "America/Detroit"
   },
+  "system_monitor": {},
+  "weather_eye": {
+    "default_city": ""
+  },
+  "project_manager": {},
+  "invoice_system": {
+    "default_rate": 75,
+    "tax_rate": 0,
+    "payment_terms_days": 30,
+    "default_notes": "Payment due within 30 days. Thank you for your business."
+  },
+  "website_auditor": {},
+  "uptime_monitor": {},
+  "telegram": {
+    "bot_token": "",
+    "allowed_chat_ids": [],
+    "notify_chat_ids": []
+  },
+  "web_remote": {
+    "port": 7777,
+    "host": "0.0.0.0"
+  },
   "ui": {
-    "theme": "dark",
-    "accent_color": "#3B82F6"
+    "theme": "jarvis",
+    "accent_color": "#00D4FF"
   }
 }

@@ -1,0 +1,21 @@
+[
+  {
+    "id": 1,
+    "name": "Genoya",
+    "url": "https://genoyapetfood.com",
+    "added": "2026-03-22T22:26:02.278479",
+    "last_check": "2026-03-22T22:26:08.252458",
+    "last_status": "up",
+    "last_response_ms": 802,
+    "total_checks": 1,
+    "up_checks": 1,
+    "history": [
+      {
+        "timestamp": "2026-03-22T22:26:08.252458",
+        "status": "up",
+        "ms": 802
+      }
+    ],
+    "incidents": []
+  }
+]
