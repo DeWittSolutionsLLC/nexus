@@ -1,0 +1,54 @@
+{
+    "ai": {
+        "model": "llama3.1:8b",
+        "ollama_host": "http://localhost:11434",
+        "temperature": 0.3
+    },
+    "browser": {
+    "headless": false,
+    "user_data_dir": "./browser_data",
+    "slow_mo": 50,
+    "default_timeout": 15000
+  },
+  "email": {
+    "provider": "gmail",
+    "url": "https://mail.google.com"
+  },
+  "whatsapp": {
+    "url": "https://web.whatsapp.com"
+  },
+  "discord": {
+    "url": "https://discord.com/channels/@me"
+  },
+  "github": {
+    "url": "https://github.com",
+    "username": ""
+  },
+  "gvoice": {
+    "url": "https://voice.google.com/u/1/calls"
+  },
+  "voice": {
+    "whisper_model": "tiny",
+    "wake_word": true,
+    "voice_rate": 175,
+    "voice_volume": 0.9,
+    "voice_id": null
+  },
+  "screen": {},
+  "memory": {
+    "memory_dir": "memory"
+  },
+  "proactive": {},
+  "leads": {
+    "your_name": "YOUR NAME",
+    "your_email": "YOUR EMAIL",
+    "portfolio_url": "YOUR PORTFOLIO URL"
+  },
+  "scheduler": {
+    "timezone": "America/Detroit"
+  },
+  "ui": {
+    "theme": "dark",
+    "accent_color": "#3B82F6"
+  }
+}
