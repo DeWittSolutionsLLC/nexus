@@ -10,6 +10,7 @@ LOG_FILE = Path.home() / "NexusScripts" / "pomodoro_log.json"
 
 class PomodoroPlugin(BasePlugin):
     name = "pomodoro"
+    description = "Pomodoro focus timer with work/break cycles and session logging"
     icon = "🍅"
 
     def __init__(self, *args, **kwargs):
@@ -185,7 +186,9 @@ class PomodoroPlugin(BasePlugin):
         self._break_duration = minutes
         return {"success": True, "message": f"Break duration set to {minutes} minutes."}
 
-    def execute(self, action: str, params=None) -> dict:
+    async def execute(self, action: str, params: dict) -> str:
+        if params is None:
+            params = {}
         actions = {
             "start": self.start,
             "stop": self.stop,
@@ -196,9 +199,21 @@ class PomodoroPlugin(BasePlugin):
             "set_break_duration": self.set_break_duration,
         }
         if action not in actions:
-            return {"error": f"Unknown action '{action}'. Available: {list(actions.keys())}"}
+            return f"Unknown action '{action}'. Available: {list(actions.keys())}"
         try:
-            return actions[action](params)
+            result = actions[action](params)
+            return result if isinstance(result, str) else str(result)
         except Exception as e:
             logger.exception("Error in action '%s'", action)
-            return {"error": str(e)}
+            return f"Error: {e}"
+
+    def get_capabilities(self) -> list[dict]:
+        return [
+            {"action": "start",             "description": "Start a pomodoro work timer"},
+            {"action": "stop",              "description": "Stop the current timer"},
+            {"action": "get_status",        "description": "Get time remaining and current task"},
+            {"action": "take_break",        "description": "Start a 5 or 15 minute break"},
+            {"action": "get_stats",         "description": "Pomodoros completed today or this week"},
+            {"action": "set_work_duration", "description": "Change work session duration in minutes"},
+            {"action": "set_break_duration","description": "Change break duration in minutes"},
+        ]

@@ -10,6 +10,7 @@ HABITS_FILE = Path.home() / "NexusScripts" / "habits.json"
 
 class HabitTrackerPlugin(BasePlugin):
     name = "habit_tracker"
+    description = "Track daily habits and streaks"
     icon = "✅"
 
     def __init__(self, *args, **kwargs):
@@ -202,7 +203,9 @@ class HabitTrackerPlugin(BasePlugin):
             "completion": f"{len(done)}/{len(data['habits'])}",
         }
 
-    def execute(self, action: str, params=None) -> dict:
+    async def execute(self, action: str, params: dict) -> str:
+        if params is None:
+            params = {}
         actions = {
             "add_habit": self.add_habit,
             "complete_habit": self.complete_habit,
@@ -214,9 +217,22 @@ class HabitTrackerPlugin(BasePlugin):
             "get_today": self.get_today,
         }
         if action not in actions:
-            return {"error": f"Unknown action '{action}'. Available: {list(actions.keys())}"}
+            return f"Unknown action '{action}'. Available: {list(actions.keys())}"
         try:
-            return actions[action](params)
+            result = actions[action](params)
+            return result if isinstance(result, str) else str(result)
         except Exception as e:
             logger.exception("Error in action '%s'", action)
-            return {"error": str(e)}
+            return f"Error: {e}"
+
+    def get_capabilities(self) -> list[dict]:
+        return [
+            {"action": "add_habit",       "description": "Add a new habit to track"},
+            {"action": "complete_habit",  "description": "Mark a habit as done today"},
+            {"action": "get_today",       "description": "Show which habits are done/not done today"},
+            {"action": "list_habits",     "description": "List all habits with streaks"},
+            {"action": "get_streak",      "description": "Get current streak for a habit"},
+            {"action": "get_stats",       "description": "Completion rate and stats for a habit"},
+            {"action": "uncomplete_habit","description": "Remove today's completion for a habit"},
+            {"action": "delete_habit",    "description": "Delete a habit"},
+        ]

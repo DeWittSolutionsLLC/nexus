@@ -18,6 +18,7 @@ except ImportError:
 
 class ScreenRecorderPlugin(BasePlugin):
     name = "screen_recorder"
+    description = "Record screen as video or capture screenshots"
     icon = "🎬"
 
     def __init__(self, *args, **kwargs):
@@ -216,7 +217,9 @@ class ScreenRecorderPlugin(BasePlugin):
                 return {"success": True, "message": f"Deleted {filename}."}
         return {"error": f"File '{filename}' not found in recordings or screenshots."}
 
-    def execute(self, action: str, params=None) -> dict:
+    async def execute(self, action: str, params: dict) -> str:
+        if params is None:
+            params = {}
         actions = {
             "screenshot": self.screenshot,
             "screenshot_region": self.screenshot_region,
@@ -227,12 +230,24 @@ class ScreenRecorderPlugin(BasePlugin):
             "delete_recording": self.delete_recording,
         }
         if action not in actions:
-            return {"error": f"Unknown action '{action}'. Available: {list(actions.keys())}"}
+            return f"Unknown action '{action}'. Available: {list(actions.keys())}"
         try:
-            return actions[action](params)
+            result = actions[action](params)
+            return result if isinstance(result, str) else str(result)
         except Exception as e:
             logger.exception("Error in action '%s'", action)
-            return {"error": str(e)}
+            return f"Error: {e}"
+
+    def get_capabilities(self) -> list[dict]:
+        return [
+            {"action": "screenshot",         "description": "Capture full screen as PNG"},
+            {"action": "screenshot_region",  "description": "Capture a specific screen region"},
+            {"action": "start_recording",    "description": "Start screen video recording"},
+            {"action": "stop_recording",     "description": "Stop screen recording and save file"},
+            {"action": "get_recording_status","description": "Check if recording is active and duration"},
+            {"action": "list_recordings",    "description": "List all saved recordings and screenshots"},
+            {"action": "delete_recording",   "description": "Delete a recording file"},
+        ]
 
     def shutdown(self) -> None:
         if self._recording:

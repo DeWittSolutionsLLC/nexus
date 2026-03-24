@@ -11,6 +11,7 @@ REMINDER_INTERVAL = 60  # seconds between reminder checks
 
 class SmartCalendarPlugin(BasePlugin):
     name = "smart_calendar"
+    description = "Local calendar with AI-powered scheduling and reminders"
     icon = "📅"
 
     def __init__(self, *args, **kwargs):
@@ -223,7 +224,9 @@ class SmartCalendarPlugin(BasePlugin):
         title = title or "Event"
         return self.add_event({"title": title, "date": ev_date, "time": ev_time, "duration_minutes": duration})
 
-    def execute(self, action: str, params=None) -> dict:
+    async def execute(self, action: str, params: dict) -> str:
+        if params is None:
+            params = {}
         actions = {
             "add_event": self.add_event,
             "list_events": self.list_events,
@@ -235,12 +238,25 @@ class SmartCalendarPlugin(BasePlugin):
             "parse_and_add": self.parse_and_add,
         }
         if action not in actions:
-            return {"error": f"Unknown action '{action}'. Available: {list(actions.keys())}"}
+            return f"Unknown action '{action}'. Available: {list(actions.keys())}"
         try:
-            return actions[action](params)
+            result = actions[action](params)
+            return result if isinstance(result, str) else str(result)
         except Exception as e:
             logger.exception("Error in action '%s'", action)
-            return {"error": str(e)}
+            return f"Error: {e}"
+
+    def get_capabilities(self) -> list[dict]:
+        return [
+            {"action": "add_event",              "description": "Add a new calendar event"},
+            {"action": "list_events",            "description": "List upcoming events"},
+            {"action": "get_today",              "description": "Show today's full schedule"},
+            {"action": "delete_event",           "description": "Delete an event by title or id"},
+            {"action": "find_free_time",         "description": "Find a free slot of given duration"},
+            {"action": "get_upcoming_reminders", "description": "Events starting in the next 30 minutes"},
+            {"action": "update_event",           "description": "Update an existing event"},
+            {"action": "parse_and_add",          "description": "Add event from natural language description"},
+        ]
 
     def shutdown(self) -> None:
         self._stop_event.set()

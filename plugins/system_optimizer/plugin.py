@@ -77,7 +77,12 @@ class SystemOptimizerPlugin(BasePlugin):
         for temp_dir in self.TEMP_DIRS:
             if not temp_dir or not os.path.isdir(temp_dir):
                 continue
-            for entry in os.scandir(temp_dir):
+            try:
+                entries = list(os.scandir(temp_dir))
+            except PermissionError:
+                errors += 1
+                continue
+            for entry in entries:
                 try:
                     mtime = datetime.fromtimestamp(entry.stat().st_mtime)
                     if mtime < cutoff:
