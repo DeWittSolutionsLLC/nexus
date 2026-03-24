@@ -4,6 +4,7 @@ Plugin Manager — Auto-discovers and manages all Nexus plugins.
 
 import importlib
 import logging
+import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
@@ -115,6 +116,56 @@ class PluginManager:
 
     def get_plugin(self, name: str) -> Optional[BasePlugin]:
         return self.plugins.get(name)
+
+    def hot_load_plugin(self, folder_name: str) -> bool:
+        """
+        Dynamically import (or re-import) a plugin folder at runtime.
+        Returns True if the plugin loaded and connected successfully.
+        Called by the Evolution Engine after promoting staged code.
+        """
+        import asyncio
+        try:
+            # Force a fresh import even if the module was previously loaded
+            module_path = f"plugins.{folder_name}.plugin"
+            if module_path in sys.modules:
+                import importlib
+                module = importlib.reload(sys.modules[module_path])
+            else:
+                import importlib
+                module = importlib.import_module(module_path)
+
+            plugin_class = None
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                if (isinstance(attr, type) and issubclass(attr, BasePlugin)
+                        and attr is not BasePlugin):
+                    plugin_class = attr
+                    break
+
+            if plugin_class is None:
+                logger.warning(f"hot_load: no BasePlugin subclass found in {folder_name}")
+                return False
+
+            plugin_config = self.config.get(plugin_class.name, {})
+            instance = plugin_class(plugin_config, browser_engine=self.browser_engine)
+
+            # Connect synchronously via a temporary event loop if one isn't running
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(instance.connect())
+                else:
+                    loop.run_until_complete(instance.connect())
+            except RuntimeError:
+                asyncio.run(instance.connect())
+
+            self.plugins[instance.name] = instance
+            logger.info(f"Hot-loaded plugin: {instance.name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"hot_load_plugin failed for '{folder_name}': {e}")
+            return False
 
     def get_all_capabilities(self) -> dict[str, list[dict]]:
         return {name: p.get_capabilities() for name, p in self.plugins.items()}

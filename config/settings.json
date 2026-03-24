@@ -72,5 +72,8 @@
   "ui": {
     "theme": "jarvis",
     "accent_color": "#00D4FF"
+  },
+  "identity": {
+    "personality_mode": "dry_wit"
   }
 }

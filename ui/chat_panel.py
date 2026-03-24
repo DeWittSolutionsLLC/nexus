@@ -269,6 +269,10 @@ class ChatPanel(ctk.CTkFrame):
 
     # ── Message display ───────────────────────────────────────────────────────
 
+    def _copy_to_clipboard(self, text: str):
+        self.clipboard_clear()
+        self.clipboard_append(text)
+
     def add_user_message(self, text: str):
         ts = datetime.now().strftime("%H:%M")
         outer = ctk.CTkFrame(self.chat_area, fg_color="transparent")
@@ -277,12 +281,23 @@ class ChatPanel(ctk.CTkFrame):
         right = ctk.CTkFrame(outer, fg_color="transparent")
         right.pack(anchor="e")
 
-        # Timestamp
+        # Timestamp + copy button row
+        hdr = ctk.CTkFrame(right, fg_color="transparent")
+        hdr.pack(anchor="e", padx=SPACING["sm"])
         ctk.CTkLabel(
-            right, text=f"YOU  {ts}",
+            hdr, text=f"YOU  {ts}",
             font=("Cascadia Code", 8),
             text_color=COLORS["text_muted"],
-        ).pack(anchor="e", padx=SPACING["sm"])
+        ).pack(side="left")
+        ctk.CTkButton(
+            hdr, text="⧉",
+            font=("Segoe UI", 9),
+            fg_color="transparent",
+            hover_color=COLORS["bg_tertiary"],
+            text_color=COLORS["text_muted"],
+            width=20, height=16, corner_radius=4,
+            command=lambda t=text: self._copy_to_clipboard(t),
+        ).pack(side="left", padx=(4, 0))
 
         # Bubble with right-side cyan accent bar
         bubble_row = ctk.CTkFrame(right, fg_color="transparent")
@@ -336,6 +351,15 @@ class ChatPanel(ctk.CTkFrame):
             font=("Cascadia Code", 8),
             text_color=COLORS["text_muted"],
         ).pack(side="left")
+        ctk.CTkButton(
+            hdr, text="⧉",
+            font=("Segoe UI", 9),
+            fg_color="transparent",
+            hover_color=COLORS["bg_tertiary"],
+            text_color=COLORS["text_muted"],
+            width=20, height=16, corner_radius=4,
+            command=lambda t=text: self._copy_to_clipboard(t),
+        ).pack(side="left", padx=(6, 0))
 
         # Message bubble
         bubble = ctk.CTkLabel(
