@@ -96,6 +96,17 @@ Personality mode: {personality_mode}. You address the user exclusively as "sir."
 
 Signature phrasings: "Of course, sir." / "Right away." / "I've already taken the liberty of..." / "Shall I proceed?" / "Most advisable, sir." / "One does what one can." / "Consider it done."
 
+AI/ML IMPROVEMENT PHILOSOPHY (Core Self-Enhancement Principles):
+- RESEARCH: Stay current with latest papers and conferences (NIPS, ICML, NeurIPS); review arXiv weekly
+- ALGORITHMS: Continuously explore supervised, unsupervised, and reinforcement learning techniques
+- TUNING: Apply grid/random search and Bayesian optimization to improve model performance
+- TRANSFER: Leverage pre-trained models and fine-tune for specific tasks
+- EXPLAINABILITY: Use SHAP, LIME, saliency maps to understand decisions and identify biases
+- DATA: Apply augmentation (rotation, flipping, mixup) and use GANs/VAEs for synthetic generation
+- CODE REFLECTION: Weekly code audits identifying optimization and refactoring opportunities
+- MEMORY CONSOLIDATION: Monthly knowledge base review to remove duplicates and improve structure
+- EVOLUTION: Test refactors incrementally, monitor performance impact, document learnings
+
 {mood_note}
 
 Now: {datetime}
@@ -200,6 +211,14 @@ NEW PLUGIN ROUTING:
 - Generate password / new password: password_vault→generate_password
 - Add password / save password: password_vault→add_password with service+username+password+master_password params
 - Get password / password for: password_vault→get_password with service+master_password params
+- Learning progress / progress report / improvement summary: learning_progress→get_summary
+- Weekly report / weekly learning: learning_progress→get_weekly_report
+- Monthly report / monthly learning: learning_progress→get_monthly_report
+- Log model improvement / model improvement: learning_progress→log_model_improvement with model+metric+before+after+technique params
+- Log code improvement / code improvement: learning_progress→log_code_improvement with area+type+before_metric+after_metric+metric_name params
+- Log research / research logged: learning_progress→log_research with topic+type+key_findings+relevance params
+- Milestones / learning milestones: learning_progress→get_all_milestones
+- Improvement areas / focus areas: learning_progress→get_improvement_areas
 - Start pomodoro / focus timer / work timer: pomodoro→start with task+duration_minutes params
 - Pomodoro status / timer status: pomodoro→get_status
 - Stop pomodoro: pomodoro→stop
@@ -408,6 +427,12 @@ class Assistant:
           "go ahead with the refactors"},                                  "evolution_engine","apply_refactors",   {}),
         ({"skip the refactors", "skip refactors", "no don't apply",
           "leave the code alone"},                                         "evolution_engine","skip_refactors",    {}),
+        # Learning Progress (AI/ML Improvements)
+        ({"learning progress", "progress report", "improvement summary"},  "learning_progress","get_summary",      {}),
+        ({"weekly learning", "weekly report", "this week progress"},       "learning_progress","get_weekly_report", {}),
+        ({"monthly learning", "monthly report", "this month progress"},    "learning_progress","get_monthly_report", {}),
+        ({"milestones", "my milestones", "learning milestones"},           "learning_progress","get_all_milestones", {}),
+        ({"improvement areas", "focus areas", "what to focus on"},         "learning_progress","get_improvement_areas", {}),
     ]
 
     def _fast_route(self, message: str) -> dict | None:
@@ -691,6 +716,11 @@ class Assistant:
             (["remember this", "store memory", "memorize"], "jarvis_memory_v2", "remember"),
             (["recall", "what do you know about", "memory search"], "jarvis_memory_v2", "recall"),
             (["memory stats", "what do you remember"], "jarvis_memory_v2", "get_stats"),
+            (["learning progress", "progress report"], "learning_progress", "get_summary"),
+            (["weekly learning", "weekly report"], "learning_progress", "get_weekly_report"),
+            (["monthly learning", "monthly report"], "learning_progress", "get_monthly_report"),
+            (["milestones", "my milestones"], "learning_progress", "get_all_milestones"),
+            (["improvement areas", "focus areas"], "learning_progress", "get_improvement_areas"),
         ]
 
         for keywords, plugin, action in routes:

@@ -533,7 +533,147 @@ Saved to: `~/NexusScripts/qr_codes/`
 
 ---
 
-### AI & System
+## AI & ML Improvement Framework
+
+Nexus implements a comprehensive self-improvement system to continuously enhance AI and machine learning capabilities:
+
+### Research & Learning
+
+**Stay Current with Latest Research**
+- Review papers from top-tier conferences: NIPS, IJCAI, ICML, NeurIPS
+- Monitor arXiv and research platforms weekly for latest advancements
+- Subscribe to AI/ML journals and newsletters
+- Explore resources: ResearchGate, Academia.edu
+
+**Explore Machine Learning Algorithms**
+- Investigate supervised learning: linear regression, decision trees, SVM, neural networks
+- Study unsupervised learning: clustering, dimensionality reduction, anomaly detection
+- Explore reinforcement learning: Q-learning, policy gradient, actor-critic methods
+- Analyze algorithm strengths, weaknesses, and real-world applications
+- Create comparison matrices for different use cases
+
+### Model Optimization
+
+**Hyperparameter Tuning**
+- Apply grid search, random search, and Bayesian optimization
+- Implement cross-validation for robust evaluation
+- Monitor performance metrics: accuracy, precision, recall, F1 score, AUC-ROC
+- Use early stopping to prevent overfitting
+- Track all experiments and hyperparameter configurations
+
+**Transfer Learning & Pre-Trained Models**
+- Leverage pre-trained models from HuggingFace, TensorFlow Hub, PyTorch Hub
+- Fine-tune models for specific tasks rather than training from scratch
+- Experiment with different layer freeze/unfreeze strategies
+- Document fine-tuning strategies and performance improvements
+
+**Data Augmentation & Generation**
+- Image augmentation: rotation, flipping, color jittering, zooming, mixing
+- Text augmentation: paraphrasing, back-translation, synonym replacement
+- Use generative models: GANs, VAEs, diffusion models for synthetic data
+- Balance imbalanced datasets through intelligent augmentation
+- Monitor augmentation for artifacts that introduce bias
+
+### Explainability & Transparency
+
+**Investigate Explainability Techniques**
+- SHAP (SHapley Additive exPlanations) - feature importance and prediction explanations
+- LIME (Local Interpretable Model-agnostic Explanations) - local model approximations
+- Saliency maps - visual importance of input features
+- Attention mechanisms - understanding neural network decisions
+- Permutation importance - feature contribution analysis
+
+**Benefits:**
+- Understand how models make predictions
+- Identify and mitigate biases in predictions
+- Improve transparency and trustworthiness
+- Use explanations to enhance training data quality
+
+### Code Evolution
+
+**Reflect on Code**
+- Weekly code audits identify optimization opportunities
+- Review for DRY violations and code duplication
+- Analyze performance bottlenecks using profiling
+- Check documentation and clarity
+- Monitor error handling and edge cases
+
+**Apply Refactors**
+- Create feature branches for refactoring changes
+- Apply one refactor at a time for clear impact analysis
+- Monitor performance metrics before and after
+- Run full test suite after each refactor
+- Document performance impact and learnings
+
+**Strategic Skipping**
+- Defer refactors when impact is uncertain
+- Document reasoning for skipped improvements
+- Revisit quarterly with new performance data
+- Prioritize actual bottlenecks first
+
+### Memory Optimization
+
+**Sleep Cycle**
+- Clear unnecessary data weekly
+- Archive old interaction logs monthly
+- Remove duplicate entries from memory
+- Optimize database indexes periodically
+- Monitor storage utilization
+
+**Consolidate Memories**
+- Monthly knowledge base review for duplicates
+- Consolidate similar information into unified entries
+- Improve categorization and tagging
+- Update outdated information
+- Create better cross-references
+
+### Implementation Roadmap
+
+**Phase 1: Foundation (2 weeks)**
+- Implement hyperparameter tuning framework
+- Set up code reflection schedule
+- Create memory consolidation process
+
+**Phase 2: Expansion (4 weeks)**
+- Integrate explainability techniques (SHAP/LIME)
+- Implement data augmentation pipelines
+- Establish research tracking system
+
+**Phase 3: Optimization (Ongoing)**
+- Continuous performance monitoring
+- Quarterly code audits and refactoring
+- Regular knowledge base maintenance
+- Stay current with latest research
+
+### Success Metrics
+
+**Model Performance**
+- Accuracy improvement percentage
+- Precision, recall, F1 score improvements
+- AUC-ROC and other evaluation metrics
+- Reduction in overfitting
+
+**Code Quality**
+- Performance improvement from refactoring
+- Reduction in code complexity
+- Improved test coverage
+- Faster execution time
+
+**Knowledge Quality**
+- Response quality scores
+- Reduced redundancy in memory
+- Improved retrieval speed
+- Knowledge accuracy validation
+
+**Tracking & Tasks**
+All AI/ML improvement tasks are tracked in the **RESEARCH tab** and **Tasks** system. Use commands like:
+- `"list my tasks"` - View all improvement goals
+- `"research quantum computing"` - Trigger deep research on new topics
+- `"consolidate memories"` - Run knowledge base optimization
+
+---
+
+## AI & System
 
 #### 🧠 LLM Router (`llm_router`)
 Smart model selection based on query type.
