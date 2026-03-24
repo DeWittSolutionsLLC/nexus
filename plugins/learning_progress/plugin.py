@@ -67,6 +67,106 @@ class LearningProgressPlugin(BasePlugin):
         self._status_message = "Learning progress tracking active"
         return True
 
+    def get_capabilities(self) -> list[dict]:
+        """Return plugin capabilities."""
+        return [
+            {
+                "action": "log_model_improvement",
+                "description": "Log model performance improvement",
+                "parameters": {
+                    "model": "string (model name)",
+                    "metric": "string (metric name, e.g. 'accuracy')",
+                    "before": "float (before value)",
+                    "after": "float (after value)",
+                    "technique": "string (technique used)",
+                    "description": "string (description)"
+                }
+            },
+            {
+                "action": "log_code_improvement",
+                "description": "Log code quality or performance improvement",
+                "parameters": {
+                    "area": "string (code area)",
+                    "type": "string (refactoring, optimization, bugfix)",
+                    "before_metric": "float (before metric)",
+                    "after_metric": "float (after metric)",
+                    "metric_name": "string (metric name)",
+                    "description": "string (description)"
+                }
+            },
+            {
+                "action": "log_research",
+                "description": "Log research activity",
+                "parameters": {
+                    "topic": "string (research topic)",
+                    "type": "string (paper, conference, resource, experiment)",
+                    "key_findings": "list (key findings)",
+                    "relevance": "string (low, medium, high)",
+                    "application": "string (application)",
+                    "source": "string (source)"
+                }
+            },
+            {
+                "action": "log_memory_consolidation",
+                "description": "Log memory optimization activity",
+                "parameters": {
+                    "duplicates_removed": "int (duplicates removed)",
+                    "entries_consolidated": "int (entries consolidated)",
+                    "categories_improved": "int (categories improved)",
+                    "total_entries": "int (total entries)",
+                    "storage_reduction_mb": "float (storage reduction in MB)",
+                    "notes": "string (notes)"
+                }
+            },
+            {
+                "action": "log_refactoring",
+                "description": "Log code refactoring activity",
+                "parameters": {
+                    "component": "string (component name)",
+                    "type": "string (general, performance, cleanup, documentation)",
+                    "lines_changed": "int (lines changed)",
+                    "complexity_reduction": "float (complexity reduction)",
+                    "performance_improvement_pct": "float (performance improvement %)",
+                    "description": "string (description)",
+                    "tests_passed": "bool (tests passed)"
+                }
+            },
+            {
+                "action": "add_milestone",
+                "description": "Add a learning milestone",
+                "parameters": {
+                    "title": "string (milestone title)",
+                    "category": "string (category)",
+                    "achievement": "string (achievement)",
+                    "impact": "string (impact)",
+                    "next_goals": "list (next goals)"
+                }
+            },
+            {
+                "action": "get_summary",
+                "description": "Get learning progress summary",
+                "parameters": {
+                    "period": "int (days, default 30)"
+                }
+            },
+            {
+                "action": "get_weekly_report",
+                "description": "Get weekly learning report"
+            },
+            {
+                "action": "get_monthly_report",
+                "description": "Get monthly learning report"
+            },
+            {
+                "action": "get_all_milestones",
+                "description": "Get all learning milestones"
+            },
+            {
+                "action": "get_improvement_areas",
+                "description": "Get areas needing improvement"
+            }
+        ]
+
     async def execute(self, action: str, params: dict) -> str:
         """Execute learning progress commands."""
         try:

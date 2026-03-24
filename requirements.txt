@@ -2,6 +2,9 @@
 customtkinter>=5.2.0
 Pillow>=10.0.0
 
+# Charts and Visualization
+matplotlib>=3.8.0
+
 # Local AI
 ollama>=0.4.0
 
