@@ -1,14 +1,16 @@
 from core.plugin_manager import BasePlugin
 import logging, json, uuid, requests
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger("nexus.plugins.jarvis_memory_v2")
 
-MEMORY_FILE = Path.home() / "NexusScripts" / "jarvis_memory_v2.json"
-OLLAMA_URL = "http://localhost:11434/api/generate"
+MEMORY_FILE  = Path.home() / "NexusScripts" / "jarvis_memory_v2.json"
+INSIGHTS_LOG = Path.home() / "NexusScripts" / "jarvis_insights.json"
+OLLAMA_URL   = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3.2:3b"
-CATEGORIES = {"personal", "preference", "fact", "event", "goal", "relationship", "work"}
+CATEGORIES   = {"personal", "preference", "fact", "event", "goal", "relationship", "work", "insight"}
+SLEEP_CYCLE_AGE_DAYS = 30   # memories older than this are eligible for consolidation
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -22,9 +24,13 @@ except Exception:
     logger.info("sentence_transformers not available — using keyword similarity")
 
 
-def _ollama(prompt: str) -> str:
+def _ollama(prompt: str, timeout: int = 60) -> str:
     try:
-        resp = requests.post(OLLAMA_URL, json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=60)
+        resp = requests.post(
+            OLLAMA_URL,
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            timeout=timeout,
+        )
         resp.raise_for_status()
         return resp.json().get("response", "").strip()
     except Exception as e:
@@ -104,6 +110,7 @@ class JarvisMemoryV2Plugin(BasePlugin):
             {"action": "update_importance", "description": "Update importance score of a memory", "params": ["id", "importance"]},
             {"action": "get_stats", "description": "Memory statistics by category and importance", "params": []},
             {"action": "consolidate", "description": "AI reviews memories and suggests merges/removals", "params": []},
+            {"action": "sleep_cycle", "description": "Summarise old memories, remove redundancies, and generate high-level insights", "params": []},
         ]
 
     async def execute(self, action: str, params: dict) -> str:
@@ -124,6 +131,8 @@ class JarvisMemoryV2Plugin(BasePlugin):
                 return await self._get_stats(params)
             elif action == "consolidate":
                 return await self._consolidate(params)
+            elif action == "sleep_cycle":
+                return await self._sleep_cycle(params)
             else:
                 return f"Unknown action: {action}"
         except Exception as e:
@@ -296,3 +305,99 @@ class JarvisMemoryV2Plugin(BasePlugin):
         )
         result = _ollama(prompt)
         return f"Memory Consolidation Report ({len(data)} memories reviewed):\n\n{result}"
+
+    async def _sleep_cycle(self, params: dict) -> str:
+        """
+        Feature 5 — Memory Sleep Cycle.
+
+        1. Identify memories older than SLEEP_CYCLE_AGE_DAYS
+        2. Group them by category
+        3. Ask Ollama to produce a concise insight summary for each group
+        4. Save those summaries as new 'insight' category memories (importance=5)
+        5. Delete the raw old memories that were summarised
+        6. Report the operation
+        """
+        data = _load()
+        if not data:
+            return "The memory banks are empty, sir. Nothing to consolidate."
+
+        cutoff = (datetime.now() - timedelta(days=SLEEP_CYCLE_AGE_DAYS)).isoformat()
+        old_memories = [m for m in data if m.get("timestamp", "") < cutoff]
+
+        if not old_memories:
+            return (
+                f"No memories older than {SLEEP_CYCLE_AGE_DAYS} days found, sir. "
+                "The memory banks are already in excellent order."
+            )
+
+        # Group by category
+        by_category: dict[str, list] = {}
+        for m in old_memories:
+            cat = m.get("category", "fact")
+            by_category.setdefault(cat, []).append(m)
+
+        insights_created = 0
+        ids_to_remove: set[str] = set()
+        new_insights: list[dict] = []
+
+        for category, memories in by_category.items():
+            if len(memories) < 2:
+                continue  # A single memory isn't worth summarising
+
+            batch_text = "\n".join(
+                f"- [{m['id']}] {m['content']}" for m in memories[:40]
+            )
+            prompt = (
+                f"The following are memories from an AI assistant in the '{category}' category.\n"
+                f"Write ONE concise, high-level insight (2-4 sentences) that captures the most\n"
+                f"important patterns or facts. Be specific and factual.\n\n"
+                f"Memories:\n{batch_text}\n\n"
+                f"High-level insight:"
+            )
+            insight_text = _ollama(prompt, timeout=90)
+            if not insight_text or insight_text.startswith("[Ollama error"):
+                continue
+
+            new_insight = {
+                "id": str(uuid.uuid4())[:8],
+                "content": f"[INSIGHT — {category}] {insight_text}",
+                "category": "insight",
+                "importance": 5,
+                "timestamp": datetime.now().isoformat(),
+                "tags": [category, "sleep_cycle", "auto_generated"],
+                "source_ids": [m["id"] for m in memories],
+            }
+            embedding = _embed(new_insight["content"])
+            if embedding:
+                new_insight["embedding"] = embedding
+
+            new_insights.append(new_insight)
+            ids_to_remove.update(m["id"] for m in memories)
+            insights_created += 1
+
+        if not insights_created:
+            return (
+                "I reviewed the older memories, sir, but found nothing worth consolidating "
+                "into insights at this time."
+            )
+
+        # Remove the raw old memories and add the new insights
+        pruned = [m for m in data if m["id"] not in ids_to_remove]
+        pruned.extend(new_insights)
+        _save(pruned)
+
+        # Persist insights log for reference
+        try:
+            existing_log = json.loads(INSIGHTS_LOG.read_text(encoding="utf-8")) if INSIGHTS_LOG.exists() else []
+            existing_log.extend(new_insights)
+            INSIGHTS_LOG.write_text(json.dumps(existing_log, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+        removed_count = len(ids_to_remove)
+        return (
+            f"◆ Sleep Cycle complete, sir.\n"
+            f"  {insights_created} high-level insight(s) distilled from {removed_count} raw memories.\n"
+            f"  The insight category now holds the essential patterns — the raw data has been archived.\n"
+            f"  Total memories: {len(pruned)} (was {len(data)})."
+        )

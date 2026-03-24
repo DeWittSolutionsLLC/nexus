@@ -98,11 +98,13 @@ class AppWindow:
         )
         self.tabview.pack(fill="both", expand=True)
         self.tabview.add("  COMMAND  ")
+        self.tabview.add("  RESEARCH  ")
         self.tabview.add("  PROJECTS  ")
         self.tabview.add("  INTELLIGENCE  ")
         self.tabview.add("  MONITOR  ")
 
         self._build_command_tab()
+        self._build_research_tab()
         self._build_projects_tab()
         self._build_intelligence_tab()
         self._build_monitor_tab()
@@ -119,6 +121,48 @@ class AppWindow:
 
         self.chat = ChatPanel(tab, on_send=self._on_user_send)
         self.chat.pack(side="right", fill="both", expand=True)
+
+    def _build_research_tab(self):
+        tab = self.tabview.tab("  RESEARCH  ")
+        tab.configure(fg_color=COLORS["bg_primary"])
+
+        # Toolbar
+        toolbar = ctk.CTkFrame(tab, fg_color=COLORS["bg_secondary"], height=48, corner_radius=0)
+        toolbar.pack(fill="x")
+        toolbar.pack_propagate(False)
+        inner = ctk.CTkFrame(toolbar, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=SPACING["md"], pady=SPACING["xs"])
+
+        ctk.CTkLabel(inner, text="🔬  RESEARCH AGENT", font=FONTS["subheading"],
+                     text_color=COLORS["accent"]).pack(side="left")
+
+        ctk.CTkButton(inner, text="↻ Refresh", font=FONTS["small"],
+                      fg_color="transparent", hover_color=COLORS["bg_tertiary"],
+                      text_color=COLORS["text_secondary"], width=80, height=30,
+                      command=self._refresh_research).pack(side="right")
+
+        # Stats bar
+        self.research_stats_frame = ctk.CTkFrame(tab, fg_color=COLORS["bg_tertiary"], height=36, corner_radius=0)
+        self.research_stats_frame.pack(fill="x")
+        self.research_stats_label = ctk.CTkLabel(
+            self.research_stats_frame, text="Monitoring active research tasks...",
+            font=FONTS["small"], text_color=COLORS["text_secondary"],
+        )
+        self.research_stats_label.pack(anchor="w", padx=SPACING["md"], pady=SPACING["xs"])
+
+        # Research scrollable area
+        self.research_scroll = ctk.CTkScrollableFrame(
+            tab, fg_color=COLORS["bg_primary"],
+            scrollbar_button_color=COLORS["bg_tertiary"],
+            scrollbar_button_hover_color=COLORS["border"],
+        )
+        self.research_scroll.pack(fill="both", expand=True, padx=SPACING["md"], pady=SPACING["md"])
+        
+        self.research_content = ctk.CTkLabel(
+            self.research_scroll, text="No active research tasks.\nAssign research tasks from the COMMAND tab, sir.",
+            font=FONTS["body"], text_color=COLORS["text_muted"],
+        )
+        self.research_content.pack(padx=SPACING["md"], pady=SPACING["md"], anchor="w")
 
     def _build_projects_tab(self):
         tab = self.tabview.tab("  PROJECTS  ")
@@ -361,10 +405,14 @@ class AppWindow:
                     self._reply(out, short)
                     self._set_status("Ready")
                 elif plugin:
-                    self._reply(f"Warning: {plugin.name} isn't connected, sir. Check sidebar.")
+                    self._reply(self.assistant.personality.wrap_error(
+                        f"{plugin.name} isn't connected, sir. Check sidebar."
+                    ))
                     self._set_status("Ready")
                 else:
-                    self._reply(f"Plugin '{result.get('plugin')}' not found in active systems, sir.")
+                    self._reply(self.assistant.personality.wrap_error(
+                        f"the '{result.get('plugin')}' system doesn't appear to be active"
+                    ))
                     self._set_status("Ready")
 
             elif rtype == "multi_action":
@@ -391,12 +439,13 @@ class AppWindow:
                 self._set_status("Ready")
 
             elif rtype == "error":
-                self._reply(f"Error: {result.get('message', 'Unknown error')}")
+                raw = result.get('message', 'an unknown error occurred')
+                self._reply(self.assistant.personality.wrap_error(raw))
                 self._set_status("Error — ready")
 
         except Exception as e:
             logger.error(f"Process error: {e}", exc_info=True)
-            self._reply(f"I encountered an error, sir: {str(e)[:100]}")
+            self._reply(self.assistant.personality.wrap_error(str(e)[:120]))
             self._set_status("Error — ready")
 
     def _reply(self, message: str, speak: str = "", animated: bool = True):
@@ -451,6 +500,13 @@ class AppWindow:
             self.root.after(0, self.sidebar.update_status)
 
         await self.plugin_manager.connect_all(on_plugin_connected=_on_plugin)
+
+        # Wire evolution_engine with the full plugin_manager + ai config
+        evo = self.plugin_manager.get_plugin("evolution_engine")
+        if evo and hasattr(evo, "set_plugin_manager"):
+            # Pass the assistant's ai config so EvolutionEngine uses the same model
+            evo.config.update(self.assistant.config)
+            evo.set_plugin_manager(self.plugin_manager)
 
         plugin_count = sum(1 for p in self.plugin_manager.plugins.values() if p.is_connected)
         self.root.after(0, lambda: self.chat.add_system_message(
@@ -608,6 +664,87 @@ class AppWindow:
                     command=lambda n=p["name"]: self._log_hours_dialog(n),
                 )
                 log_btn.pack(side="right")
+
+    def _refresh_research(self):
+        """Refresh the research tab with active research tasks."""
+        plugin = self.plugin_manager.get_plugin("research_agent")
+        if not plugin or not plugin.is_connected:
+            self.research_stats_label.configure(text="Research Agent unavailable")
+            return
+
+        # Try to get research tasks from plugin
+        try:
+            research_tasks = getattr(plugin, "get_research_tasks", lambda: [])()
+        except Exception:
+            research_tasks = []
+
+        # Stats bar
+        active_count = len([t for t in research_tasks if t.get("status") == "in_progress"])
+        completed_count = len([t for t in research_tasks if t.get("status") == "complete"])
+        total_count = len(research_tasks)
+        
+        stats_text = f"Total: {total_count}  |  Active: {active_count}  |  Completed: {completed_count}"
+        self.research_stats_label.configure(text=stats_text)
+
+        # Clear and rebuild list
+        for w in self.research_scroll.winfo_children():
+            w.destroy()
+
+        if not research_tasks:
+            ctk.CTkLabel(
+                self.research_scroll,
+                text="No active research tasks.\nUse the COMMAND tab to initiate research, sir.",
+                font=FONTS["body"], text_color=COLORS["text_muted"],
+            ).pack(padx=SPACING["md"], pady=SPACING["md"], anchor="w")
+            return
+
+        STATUS_ICONS = {"pending": "⏳", "in_progress": "🔵", "complete": "✓", 
+                        "cancelled": "✗", "error": "⚠"}
+
+        for task in sorted(research_tasks, key=lambda x: (x.get("status") != "in_progress", -len(x.get("results", [])))):
+            card = ctk.CTkFrame(self.research_scroll, fg_color=COLORS["bg_secondary"], corner_radius=8)
+            card.pack(fill="x", padx=SPACING["sm"], pady=SPACING["xs"])
+
+            # Header
+            hdr = ctk.CTkFrame(card, fg_color="transparent")
+            hdr.pack(fill="x", padx=SPACING["md"], pady=(SPACING["sm"], SPACING["xs"]))
+
+            status_icon = STATUS_ICONS.get(task.get("status", "pending"), "⏳")
+            ctk.CTkLabel(hdr, text=f"{status_icon} {task.get('query', 'Untitled Research')}", 
+                         font=FONTS["subheading"], text_color=COLORS["text_primary"]).pack(side="left", fill="x", expand=True)
+
+            if task.get("progress"):
+                ctk.CTkLabel(hdr, text=f"{task['progress']}%", font=FONTS["small"],
+                             text_color=COLORS["accent"]).pack(side="right")
+
+            # Details
+            details_row = ctk.CTkFrame(card, fg_color="transparent")
+            details_row.pack(fill="x", padx=SPACING["md"], pady=(0, SPACING["xs"]))
+
+            details = []
+            if task.get("created_at"):
+                details.append(f"Started: {task['created_at']}")
+            result_count = len(task.get("results", []))
+            if result_count > 0:
+                details.append(f"Results: {result_count}")
+
+            if details:
+                ctk.CTkLabel(details_row, text="  •  ".join(details), font=FONTS["small"],
+                             text_color=COLORS["text_muted"]).pack(side="left")
+
+            # Results preview
+            if task.get("results") and len(task["results"]) > 0:
+                res_frame = ctk.CTkFrame(card, fg_color=COLORS["bg_tertiary"], corner_radius=6)
+                res_frame.pack(fill="x", padx=SPACING["md"], pady=(0, SPACING["sm"]))
+
+                for i, result in enumerate(task["results"][:3]):
+                    res_text = result if isinstance(result, str) else str(result.get("title", str(result)))[:80]
+                    ctk.CTkLabel(res_frame, text=f"• {res_text}", font=FONTS["small"],
+                                 text_color=COLORS["text_secondary"], wraplength=300, justify="left").pack(anchor="w", padx=SPACING["xs"], pady=2)
+
+                if len(task["results"]) > 3:
+                    ctk.CTkLabel(res_frame, text=f"... and {len(task['results']) - 3} more results", 
+                                 font=FONTS["small"], text_color=COLORS["accent"]).pack(anchor="w", padx=SPACING["xs"])
 
     def _refresh_system_stats(self):
         plugin = self.plugin_manager.get_plugin("system_monitor")

@@ -1,4 +1,9 @@
-"""Sidebar — JARVIS HUD with arc reactor, arc gauges, and quick actions."""
+"""Sidebar — JARVIS HUD with arc reactor, arc gauges, and quick actions.
+
+The entire content is wrapped in a CTkScrollableFrame so the user can
+scroll up/down when the plugin list or quick-action list overflows the
+visible height.
+"""
 
 import threading
 import tkinter as tk
@@ -14,10 +19,22 @@ class Sidebar(ctk.CTkFrame):
         self.plugin_manager = plugin_manager
         self.on_quick_action = on_quick_action
         self.pack_propagate(False)
-        self._sysmon   = None
+
+        self._sysmon    = None
         self._cpu_gauge = None
         self._ram_gauge = None
         self._dsk_gauge = None
+
+        # ── Scrollable content container ──────────────────────────────────────
+        # Everything is packed into _c so the whole sidebar scrolls as one unit.
+        self._c = ctk.CTkScrollableFrame(
+            self,
+            fg_color="transparent",
+            scrollbar_button_color=COLORS["bg_tertiary"],
+            scrollbar_button_hover_color=COLORS["border"],
+        )
+        self._c.pack(fill="both", expand=True)
+
         self._build()
         self._start_clock()
         self._start_stats()
@@ -35,10 +52,10 @@ class Sidebar(ctk.CTkFrame):
         self._build_footer()
 
     def _build_header(self):
-        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr = ctk.CTkFrame(self._c, fg_color="transparent")
         hdr.pack(fill="x", padx=SPACING["sm"], pady=(SPACING["sm"], 0))
 
-        # Left: arc reactor + title
+        # Left: title + clock
         left = ctk.CTkFrame(hdr, fg_color="transparent")
         left.pack(side="left", fill="both", expand=True)
 
@@ -69,12 +86,12 @@ class Sidebar(ctk.CTkFrame):
 
     def _build_gauges(self):
         ctk.CTkLabel(
-            self, text="SYSTEM STATUS",
+            self._c, text="SYSTEM STATUS",
             font=("Cascadia Code", 9, "bold"),
             text_color=COLORS["text_muted"],
         ).pack(anchor="w", padx=SPACING["md"], pady=(SPACING["xs"], SPACING["xs"]))
 
-        gauge_row = ctk.CTkFrame(self, fg_color="transparent")
+        gauge_row = ctk.CTkFrame(self._c, fg_color="transparent")
         gauge_row.pack(fill="x", padx=SPACING["sm"], pady=(0, SPACING["xs"]))
 
         self._cpu_gauge = ArcGauge(gauge_row, label="CPU", color=COLORS["cpu_bar"],
@@ -91,30 +108,20 @@ class Sidebar(ctk.CTkFrame):
 
     def _build_connections(self):
         ctk.CTkLabel(
-            self, text="SUBSYSTEMS",
+            self._c, text="SUBSYSTEMS",
             font=("Cascadia Code", 9, "bold"),
             text_color=COLORS["text_muted"],
         ).pack(anchor="w", padx=SPACING["md"], pady=(SPACING["xs"], SPACING["xs"]))
 
-        self.connections_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.connections_frame = ctk.CTkFrame(self._c, fg_color="transparent")
         self.connections_frame.pack(fill="x", padx=SPACING["sm"])
 
     def _build_quick_actions(self):
         ctk.CTkLabel(
-            self, text="QUICK ACCESS",
+            self._c, text="QUICK ACCESS",
             font=("Cascadia Code", 9, "bold"),
             text_color=COLORS["text_muted"],
         ).pack(anchor="w", padx=SPACING["md"], pady=(SPACING["xs"], SPACING["xs"]))
-
-        # Scrollable quick actions
-        scroll = ctk.CTkScrollableFrame(
-            self,
-            fg_color="transparent",
-            scrollbar_button_color=COLORS["bg_tertiary"],
-            scrollbar_button_hover_color=COLORS["border"],
-            height=220,
-        )
-        scroll.pack(fill="x", padx=SPACING["xs"], expand=False)
 
         quick_actions = [
             # Communication
@@ -136,6 +143,9 @@ class Sidebar(ctk.CTkFrame):
             ("🤖  Run Macro",             "List macros"),
             ("📰  News Digest",           "Today's news"),
             ("🔬  Research",              "Research a topic"),
+            # Self-Evolution
+            ("⚙  Reflect on Code",       "Reflect on your code"),
+            ("🧬  Reorganize Thoughts",   "Reorganize your thoughts"),
             # Productivity
             ("🍅  Start Pomodoro",        "Start pomodoro focus session"),
             ("🎯  Focus Status",          "Focus status"),
@@ -167,7 +177,7 @@ class Sidebar(ctk.CTkFrame):
 
         for label, cmd in quick_actions:
             btn = ctk.CTkButton(
-                scroll, text=label,
+                self._c, text=label,
                 font=("Cascadia Code", 10),
                 fg_color="transparent",
                 hover_color=COLORS["bg_tertiary"],
@@ -177,20 +187,19 @@ class Sidebar(ctk.CTkFrame):
                 corner_radius=4,
                 command=lambda c=cmd: self._action(c),
             )
-            btn.pack(fill="x", padx=2, pady=1)
+            btn.pack(fill="x", padx=SPACING["xs"] + 2, pady=1)
 
     def _build_footer(self):
-        ctk.CTkFrame(self, fg_color="transparent").pack(fill="both", expand=True)
         self._divider()
         ctk.CTkLabel(
-            self,
-            text="v2.2  ·  Ollama  ·  Playwright  ·  psutil",
+            self._c,
+            text="v2.3  ·  Ollama  ·  Playwright  ·  psutil",
             font=("Cascadia Code", 8),
             text_color=COLORS["text_dim"],
         ).pack(pady=(SPACING["xs"], SPACING["sm"]))
 
     def _divider(self):
-        tk.Frame(self, bg=COLORS["border"], height=1).pack(
+        tk.Frame(self._c, bg=COLORS["border"], height=1).pack(
             fill="x", padx=SPACING["md"], pady=SPACING["xs"]
         )
 
@@ -246,7 +255,6 @@ class Sidebar(ctk.CTkFrame):
         "project_manager", "invoice_system", "website_auditor",
         "uptime_monitor", "memory", "llm_router", "print_queue",
         "auto_documenter", "cad_engine", "hotkey_daemon",
-        # New background plugins
         "ambient_monitor", "smart_calendar", "local_rag", "jarvis_memory_v2",
         "knowledge_base", "habit_tracker", "expense_tracker",
     }
@@ -262,10 +270,9 @@ class Sidebar(ctk.CTkFrame):
             row.pack(fill="x", pady=1)
             row.pack_propagate(False)
 
-            connected = info["connected"]
-            dot_color = COLORS["success"] if connected else COLORS["text_muted"]
+            connected  = info["connected"]
+            dot_color  = COLORS["success"] if connected else COLORS["text_muted"]
 
-            # Pulse dot using tk.Canvas (1 pixel animated dot)
             dot_canvas = tk.Canvas(row, width=10, height=10,
                                    bg=COLORS["bg_secondary"], highlightthickness=0)
             dot_canvas.pack(side="left", padx=(2, 0))

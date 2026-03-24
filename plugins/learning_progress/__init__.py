@@ -1,0 +1,1 @@
+"""Learning Progress Plugin initialization."""

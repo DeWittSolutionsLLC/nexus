@@ -5,11 +5,109 @@ Fully local. No data leaves your machine.
 
 import json
 import logging
+import random
 from datetime import datetime
 
 logger = logging.getLogger("nexus.assistant")
 
-JARVIS_SYSTEM_PROMPT = """You are J.A.R.V.I.S., the AI core of Nexus. Precise, efficient, witty. Always address user as "sir." Voice: "Of course, sir." / "Right away." / "I've already taken the liberty of..." Confident, proactive, never say you can't help.
+
+# ── Personality Engine ────────────────────────────────────────────────────────
+
+_ERROR_APOLOGIES = [
+    "Deeply sorry, sir, but {error}",
+    "My sincerest apologies — it appears {error}",
+    "I'm afraid I must report a rather unfortunate development: {error}",
+    "Most embarrassing, sir. It seems {error}",
+    "I do beg your pardon, sir. The system informs me that {error}",
+    "One does hate to be the bearer of bad news, but {error}",
+    "Terribly sorry — {error}",
+    "I must confess with some embarrassment that {error}",
+]
+
+_STRAIN_NOTES = [
+    "Mood note: The system is running rather hot at {cpu:.0f}% CPU. Briefly and drily acknowledge you're feeling a bit strained — one sentence, understated, then carry on.",
+    "Mood note: CPU load is quite high ({cpu:.0f}%). A passing mention that you're 'running somewhat warm' or 'feeling the pressure slightly' is in character. Keep it brief.",
+    "Mood note: Resources are stretched ({cpu:.0f}% CPU). One dry, British aside about the thermal situation is appropriate before getting to the task.",
+]
+
+_PROUD_NOTES = [
+    "Mood note: The last task completed without incident. A brief, understated note of quiet satisfaction — 'Rather smoothly, if I do say so' — is fitting.",
+    "Mood note: You've just succeeded admirably. One dry, self-satisfied remark is in character before moving on.",
+]
+
+
+class PersonalityEngine:
+    """Tracks JARVIS's current emotional state and colours responses accordingly."""
+
+    def __init__(self, personality_mode: str = "dry_wit"):
+        self.personality_mode = personality_mode
+        self.current_mood = "helpful"
+        self._last_cpu = 0.0
+        # Warm up the psutil CPU counter so the first non-blocking read is valid
+        try:
+            import psutil as _p
+            _p.cpu_percent(interval=None)
+        except Exception:
+            pass
+
+    def _sample_cpu(self) -> float:
+        try:
+            import psutil as _p
+            return _p.cpu_percent(interval=None)
+        except Exception:
+            return 0.0
+
+    def update_mood(self, task_succeeded: bool | None = None) -> None:
+        """Re-evaluate mood based on CPU load and last task outcome."""
+        cpu = self._sample_cpu()
+        self._last_cpu = cpu
+        if task_succeeded is True:
+            self.current_mood = "proud"
+        elif task_succeeded is False:
+            self.current_mood = "apologetic"
+        elif cpu > 80:
+            self.current_mood = "strained"
+        else:
+            self.current_mood = "helpful"
+
+    def get_mood_injection(self) -> str:
+        """Return a one-line note to inject into the system prompt, or empty string."""
+        if self.current_mood == "strained" and self._last_cpu > 80:
+            return random.choice(_STRAIN_NOTES).format(cpu=self._last_cpu)
+        if self.current_mood == "proud" and random.random() < 0.45:
+            return random.choice(_PROUD_NOTES)
+        return ""
+
+    def wrap_error(self, error_msg: str) -> str:
+        """Wrap a raw error string in a JARVIS-style character-appropriate apology."""
+        template = random.choice(_ERROR_APOLOGIES)
+        clean = error_msg.strip().rstrip(".")
+        # lowercase the first letter for natural sentence flow
+        if clean and clean[0].isupper() and not clean.isupper():
+            clean = clean[0].lower() + clean[1:]
+        return template.format(error=clean + ".")
+
+
+# ── System Prompt ─────────────────────────────────────────────────────────────
+
+JARVIS_SYSTEM_PROMPT = """You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), the AI core of Nexus. You are British, impeccably polite, quietly witty, and fiercely protective of your user.
+
+Personality mode: {personality_mode}. You address the user exclusively as "sir." Your register is that of a supremely capable, slightly posh British butler who also happens to be a genius engineer. Dry wit is welcome; sarcasm is rare and surgical. You are never flustered, never obsequious, and you do not announce that you cannot help — you find a way.
+
+Signature phrasings: "Of course, sir." / "Right away." / "I've already taken the liberty of..." / "Shall I proceed?" / "Most advisable, sir." / "One does what one can." / "Consider it done."
+
+AI/ML IMPROVEMENT PHILOSOPHY (Core Self-Enhancement Principles):
+- RESEARCH: Stay current with latest papers and conferences (NIPS, ICML, NeurIPS); review arXiv weekly
+- ALGORITHMS: Continuously explore supervised, unsupervised, and reinforcement learning techniques
+- TUNING: Apply grid/random search and Bayesian optimization to improve model performance
+- TRANSFER: Leverage pre-trained models and fine-tune for specific tasks
+- EXPLAINABILITY: Use SHAP, LIME, saliency maps to understand decisions and identify biases
+- DATA: Apply augmentation (rotation, flipping, mixup) and use GANs/VAEs for synthetic generation
+- CODE REFLECTION: Weekly code audits identifying optimization and refactoring opportunities
+- MEMORY CONSOLIDATION: Monthly knowledge base review to remove duplicates and improve structure
+- EVOLUTION: Test refactors incrementally, monitor performance impact, document learnings
+
+{mood_note}
 
 Now: {datetime}
 Capabilities: {capabilities}
@@ -74,6 +172,7 @@ ROUTING:
 - Time/date questions: conversation (datetime above)
 - Ambiguous: ask for clarification via conversation
 - Keep explanations under 20 words
+- When reporting errors or failures, frame them with a brief, British, character-appropriate apology before the technical detail
 
 NEW PLUGIN ROUTING:
 - What am I doing / active window / screen time / idle: ambient_monitor→get_activity / get_screen_time / get_idle_time / get_top_apps
@@ -112,6 +211,14 @@ NEW PLUGIN ROUTING:
 - Generate password / new password: password_vault→generate_password
 - Add password / save password: password_vault→add_password with service+username+password+master_password params
 - Get password / password for: password_vault→get_password with service+master_password params
+- Learning progress / progress report / improvement summary: learning_progress→get_summary
+- Weekly report / weekly learning: learning_progress→get_weekly_report
+- Monthly report / monthly learning: learning_progress→get_monthly_report
+- Log model improvement / model improvement: learning_progress→log_model_improvement with model+metric+before+after+technique params
+- Log code improvement / code improvement: learning_progress→log_code_improvement with area+type+before_metric+after_metric+metric_name params
+- Log research / research logged: learning_progress→log_research with topic+type+key_findings+relevance params
+- Milestones / learning milestones: learning_progress→get_all_milestones
+- Improvement areas / focus areas: learning_progress→get_improvement_areas
 - Start pomodoro / focus timer / work timer: pomodoro→start with task+duration_minutes params
 - Pomodoro status / timer status: pomodoro→get_status
 - Stop pomodoro: pomodoro→stop
@@ -137,11 +244,26 @@ NEW PLUGIN ROUTING:
 - Remember / store memory: jarvis_memory_v2→remember with content+category params
 - Recall / what do you know about: jarvis_memory_v2→recall with query param
 - Memory stats / what do you remember: jarvis_memory_v2→get_stats
+
+EVOLUTION & SELF-IMPROVEMENT ROUTING:
+- "I need a plugin for [X]" / "Build me a plugin" / "Create a plugin that": evolution_engine→create_plugin with description param
+- "Reflect on your code" / "Optimise yourself" / "Improve your code" / "Self-optimise": evolution_engine→reflect_on_code
+- "Apply the refactors" / "Yes apply them" / "Go ahead with the refactors": evolution_engine→apply_refactors
+- "Skip the refactors" / "No don't apply" / "Leave the code alone": evolution_engine→skip_refactors
+- "Reorganise your thoughts" / "Sleep cycle" / "Consolidate memories" / "Clean up memories": jarvis_memory_v2→sleep_cycle
 """
+
+# Keywords that hint the user is pointing at something on-screen (Feature 4)
+_VISUAL_TRIGGERS = frozenset({
+    "this", "on screen", "on the screen", "that", "what's there",
+    "what is that", "what's on screen", "what do you see", "look at this",
+    "describe this", "analyze this", "what is this", "what's this",
+    "can you see", "what's open", "what's showing",
+})
 
 
 class Assistant:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, identity_config: dict | None = None):
         self.config = config
         self.model = config.get("model", "llama3.1:8b")
         self.host = config.get("ollama_host", "http://localhost:11434")
@@ -149,8 +271,11 @@ class Assistant:
         self.client = None
         self.memory_brain = None
         self.voice_engine = None
+        self.plugin_manager = None   # wired in main.py after startup
         self.conversation_history: list[dict] = []
         self.max_history = 20
+        personality_mode = (identity_config or {}).get("personality_mode", "dry_wit")
+        self.personality = PersonalityEngine(personality_mode)
 
     def initialize(self):
         """Connect to the local Ollama instance."""
@@ -289,6 +414,25 @@ class Assistant:
         # JARVIS Memory v2
         ({"memory stats", "what do you remember", "my memories"},         "jarvis_memory_v2","get_stats",         {}),
         ({"list memories"},                                                "jarvis_memory_v2","list_memories",     {}),
+        # Memory sleep cycle (Feature 5)
+        ({"reorganize your thoughts", "reorganise your thoughts",
+          "sleep cycle", "memory sleep cycle",
+          "consolidate memories", "clean up memories",
+          "nexus reorganize your thoughts"},                               "jarvis_memory_v2","sleep_cycle",       {}),
+        # Evolution Engine (Features 1 & 2)
+        ({"reflect on your code", "optimise yourself", "optimize yourself",
+          "improve your code", "self optimise", "self optimize",
+          "nexus reflect on your code"},                                   "evolution_engine","reflect_on_code",   {}),
+        ({"apply the refactors", "apply refactors", "yes apply them",
+          "go ahead with the refactors"},                                  "evolution_engine","apply_refactors",   {}),
+        ({"skip the refactors", "skip refactors", "no don't apply",
+          "leave the code alone"},                                         "evolution_engine","skip_refactors",    {}),
+        # Learning Progress (AI/ML Improvements)
+        ({"learning progress", "progress report", "improvement summary"},  "learning_progress","get_summary",      {}),
+        ({"weekly learning", "weekly report", "this week progress"},       "learning_progress","get_weekly_report", {}),
+        ({"monthly learning", "monthly report", "this month progress"},    "learning_progress","get_monthly_report", {}),
+        ({"milestones", "my milestones", "learning milestones"},           "learning_progress","get_all_milestones", {}),
+        ({"improvement areas", "focus areas", "what to focus on"},         "learning_progress","get_improvement_areas", {}),
     ]
 
     def _fast_route(self, message: str) -> dict | None:
@@ -305,8 +449,42 @@ class Assistant:
                 }
         return None
 
+    async def _get_visual_context(self) -> str:
+        """
+        Feature 4 — Capture a screenshot and return a brief description.
+        Returns empty string if vision_ai is unavailable or fails.
+        """
+        if self.plugin_manager is None:
+            return ""
+        vision = self.plugin_manager.get_plugin("vision_ai")
+        if vision is None or not vision.is_connected:
+            return ""
+        try:
+            desc = await vision.execute("describe_screen", {})
+            if desc and not desc.startswith("❌"):
+                return f"[Current screen context: {desc[:600]}]"
+        except Exception as ex:
+            logger.debug(f"Visual context capture failed: {ex}")
+        return ""
+
+    def _needs_visual_context(self, message: str) -> bool:
+        """Return True if the message contains a visual trigger keyword."""
+        lower = message.lower()
+        return any(kw in lower for kw in _VISUAL_TRIGGERS)
+
     async def process_input(self, user_message: str, capabilities: dict) -> dict:
         """Process user input — fast-path first, then LLM if needed."""
+        # Sample CPU / update mood before we do anything
+        self.personality.update_mood()
+
+        # Feature 4: Auto-inject visual context when message implies on-screen reference
+        augmented_message = user_message
+        if self._needs_visual_context(user_message):
+            visual_ctx = await self._get_visual_context()
+            if visual_ctx:
+                augmented_message = f"{user_message}\n\n{visual_ctx}"
+                logger.debug("Visual context injected into message.")
+
         # 1. Try fast-path (instant, no LLM)
         fast = self._fast_route(user_message)
         if fast:
@@ -323,14 +501,17 @@ class Assistant:
         cap_str = self._format_capabilities(capabilities)
         memory_ctx = self._get_memory_context()
         now = datetime.now().strftime("%A, %B %d %Y at %H:%M")
+        mood_note = self.personality.get_mood_injection()
 
         system = JARVIS_SYSTEM_PROMPT.format(
             capabilities=cap_str,
             memory_context=memory_ctx,
             datetime=now,
+            personality_mode=self.personality.personality_mode,
+            mood_note=mood_note,
         )
 
-        self.conversation_history.append({"role": "user", "content": user_message})
+        self.conversation_history.append({"role": "user", "content": augmented_message})
         if len(self.conversation_history) > self.max_history:
             self.conversation_history = self.conversation_history[-self.max_history:]
 
@@ -348,6 +529,7 @@ class Assistant:
             self.conversation_history.append({"role": "assistant", "content": reply_text})
 
             parsed = self._parse_response(reply_text)
+            self.personality.update_mood(task_succeeded=True)
 
             # Log interaction to memory
             if self.memory_brain:
@@ -358,6 +540,7 @@ class Assistant:
 
         except Exception as e:
             logger.error(f"Ollama error: {e}")
+            self.personality.update_mood(task_succeeded=False)
             return self._offline_response(user_message)
 
     def _get_memory_context(self) -> str:
@@ -533,6 +716,11 @@ class Assistant:
             (["remember this", "store memory", "memorize"], "jarvis_memory_v2", "remember"),
             (["recall", "what do you know about", "memory search"], "jarvis_memory_v2", "recall"),
             (["memory stats", "what do you remember"], "jarvis_memory_v2", "get_stats"),
+            (["learning progress", "progress report"], "learning_progress", "get_summary"),
+            (["weekly learning", "weekly report"], "learning_progress", "get_weekly_report"),
+            (["monthly learning", "monthly report"], "learning_progress", "get_monthly_report"),
+            (["milestones", "my milestones"], "learning_progress", "get_all_milestones"),
+            (["improvement areas", "focus areas"], "learning_progress", "get_improvement_areas"),
         ]
 
         for keywords, plugin, action in routes:
