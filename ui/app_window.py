@@ -318,6 +318,7 @@ class AppWindow:
 
     def _on_user_send(self, text: str):
         self.chat.add_loading()
+        self.chat.set_processing(True)
         self._set_status(f"Processing: {text[:60]}...")
         asyncio.run_coroutine_threadsafe(self._process_command(text), self.loop)
 
@@ -355,6 +356,8 @@ class AppWindow:
                     self._set_status(f"Executing: {result.get('plugin')} → {result.get('action')}")
                     out = await plugin.execute(result["action"], result.get("params", {}))
                     short = out[:150].split("\n")[0] if out else "Done."
+                    if self.voice_engine and hasattr(self.voice_engine, "play_confirm"):
+                        self.voice_engine.play_confirm()
                     self._reply(out, short)
                     self._set_status("Ready")
                 elif plugin:
@@ -399,38 +402,62 @@ class AppWindow:
     def _reply(self, message: str, speak: str = "", animated: bool = True):
         self.root.after(0, lambda: (
             self.chat.remove_loading(),
+            self.chat.set_processing(False),
             self.chat.add_bot_message(message, animated=animated),
         ))
         if speak and self.voice_engine:
-            self.voice_engine.speak_async(speak)
+            self.root.after(0, self.chat.show_waveform)
+            def _speak_and_hide():
+                self.voice_engine.speak(speak)
+                self.root.after(0, self.chat.hide_waveform)
+            threading.Thread(target=_speak_and_hide, daemon=True).start()
 
     # ── Startup ────────────────────────────────────────────────
 
     async def _startup(self):
-        boot_msgs = [
-            "[NEXUS] System initializing...",
-            "[NEXUS] Loading neural interface...",
-            "[NEXUS] Starting browser engine...",
+        boot_seq = [
+            (0.00, "NEXUS v2.1 — J.A.R.V.I.S. Command Core"),
+            (0.08, "Initializing neural interface...                [  0%]"),
+            (0.12, "Loading Ollama language model...                [ 10%]"),
+            (0.16, "Mounting plugin subsystems...                   [ 20%]"),
+            (0.20, "Calibrating holographic HUD...                  [ 30%]"),
+            (0.24, "Activating arc reactor animation...             [ 40%]"),
+            (0.28, "Launching persistent browser context...         [ 50%]"),
         ]
-        for msg in boot_msgs:
+        for delay, msg in boot_seq:
+            await asyncio.sleep(delay)
             self.root.after(0, lambda m=msg: self.chat.add_system_message(m))
-            await asyncio.sleep(0.05)
 
         try:
-            self.root.after(0, lambda: self.chat.add_system_message("[NEXUS] Establishing browser context..."))
             await self.browser_engine.start()
-            self.root.after(0, lambda: self.chat.add_system_message("[NEXUS] Browser ready  ✓"))
+            self.root.after(0, lambda: self.chat.add_system_message(
+                "Browser context established.                    [ 60%]  ✓"
+            ))
         except Exception as e:
-            self.root.after(0, lambda: self.chat.add_system_message(f"[NEXUS] Browser warning: {str(e)[:60]}"))
+            self.root.after(0, lambda: self.chat.add_system_message(
+                f"Browser warning: {str(e)[:50]}  — continuing..."
+            ))
 
-        self.root.after(0, lambda: self.chat.add_system_message("[NEXUS] Connecting plugins..."))
-        await self.plugin_manager.connect_all(
-            on_plugin_connected=lambda: self.root.after(0, self.sidebar.update_status)
-        )
+        self.root.after(0, lambda: self.chat.add_system_message(
+            "Connecting all subsystems...                    [ 70%]"
+        ))
+        total = len(self.plugin_manager.plugins)
+        connected_so_far = [0]
+
+        def _on_plugin():
+            connected_so_far[0] += 1
+            pct = 70 + int(connected_so_far[0] / max(total, 1) * 28)
+            self.root.after(0, self.sidebar.update_status)
+
+        await self.plugin_manager.connect_all(on_plugin_connected=_on_plugin)
 
         plugin_count = sum(1 for p in self.plugin_manager.plugins.values() if p.is_connected)
         self.root.after(0, lambda: self.chat.add_system_message(
-            f"[NEXUS] {plugin_count}/{len(self.plugin_manager.plugins)} plugins online  ✓"
+            f"Subsystems online: {plugin_count}/{total}              [ 98%]  ✓"
+        ))
+        await asyncio.sleep(0.1)
+        self.root.after(0, lambda: self.chat.add_system_message(
+            "All systems nominal.                            [100%]  ✓"
         ))
 
         self.root.after(0, self.sidebar.update_status)

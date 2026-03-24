@@ -55,16 +55,32 @@ def main():
     plugin_manager.discover_plugins()
     logger.info(f"Plugins: {list(plugin_manager.plugins.keys())}")
 
-    # -- Wire proactive agent to plugin manager --
-    proactive = plugin_manager.get_plugin("proactive")
-    if proactive and hasattr(proactive, "set_plugin_manager"):
-        proactive.set_plugin_manager(plugin_manager)
+    # -- Wire plugins that need plugin_manager reference --
+    for pm_name in ("proactive", "task_automator", "time_tracker", "meeting_notes", "client_portal"):
+        p = plugin_manager.get_plugin(pm_name)
+        if p and hasattr(p, "set_plugin_manager"):
+            p.set_plugin_manager(plugin_manager)
+
+    # -- Start background plugins --
+    ambient = plugin_manager.get_plugin("ambient_monitor")
+    if ambient and hasattr(ambient, "_start_monitoring"):
+        pass  # started automatically in connect()
+
+    calendar_p = plugin_manager.get_plugin("smart_calendar")
+    if calendar_p and hasattr(calendar_p, "_start_reminder_thread"):
+        pass  # started automatically in connect()
 
     # -- AI Assistant --
     from core.assistant import Assistant
     assistant = Assistant(config.get("ai", {}))
     assistant.memory_brain = memory_brain
     assistant.initialize()
+
+    # -- Wire LLM Router to assistant for smart model switching --
+    llm_router = plugin_manager.get_plugin("llm_router")
+    if llm_router and hasattr(llm_router, "set_assistant"):
+        llm_router.set_assistant(assistant)
+        logger.info("LLM Router wired to assistant")
 
     # -- Wire remote-control plugins to assistant + plugin manager --
     for remote_name in ("telegram", "web_remote"):

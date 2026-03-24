@@ -1,10 +1,15 @@
 """
-Voice Engine - Hands-free Jarvis-style voice control.
+Voice Engine v2 — JARVIS-quality speech for Nexus.
 
-Speech-to-Text: OpenAI Whisper (runs locally on CPU)
-Text-to-Speech: pyttsx3 (uses Windows SAPI5 built-in voices - zero setup)
+Speech-to-Text: OpenAI Whisper (local, zero-latency)
+Text-to-Speech: Windows Neural SAPI5 voices (Windows 11 built-in neural voices
+                sound remarkably good — especially "Microsoft Guy Natural")
+                Falls back to standard SAPI5 (David/Mark) on older Windows.
 
-Everything runs offline. Nothing leaves your machine.
+Sound Effects:  Generated programmatically — no audio files needed.
+                Plays via sounddevice (already installed).
+
+Everything runs 100% offline.
 """
 
 import logging
@@ -14,127 +19,239 @@ import numpy as np
 
 logger = logging.getLogger("nexus.voice")
 
-SAMPLE_RATE = 16000
-CHANNELS = 1
-DTYPE = "int16"
+SAMPLE_RATE       = 16000
+CHANNELS          = 1
+DTYPE             = "int16"
 SILENCE_THRESHOLD = 300
-SILENCE_DURATION = 1.8
-MIN_RECORDING_DURATION = 0.5
-WAKE_WORD = "nexus"
-# Whisper tiny often mishears "nexus" as these variants
-WAKE_WORD_VARIANTS = ["nexus", "nexis", "naxus", "next us", "next is", "nexas", "nekus", "nexos", "lettuce", "texas"]
+SILENCE_DURATION  = 1.8
+MIN_RECORDING_S   = 0.5
+WAKE_WORD         = "nexus"
+WAKE_WORD_VARIANTS = [
+    "nexus", "nexis", "naxus", "next us", "next is",
+    "nexas", "nekus", "nexos", "lettuce", "texas",
+]
 
+# Preferred voice names — checked in priority order.
+# Windows 11 ships with Neural voices that sound excellent.
+PREFERRED_VOICES = [
+    "microsoft guy online (natural)",   # Win11 neural — best JARVIS match
+    "microsoft ryan online (natural)",  # Win11 neural — British male
+    "microsoft aria online (natural)",  # Win11 neural — alternative
+    "microsoft david desktop",          # Win10 standard — decent male
+    "david",                            # Generic SAPI fallback
+    "mark",
+    "james",
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sound FX — generated with numpy, no files needed
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SoundFX:
+    SR = 44100
+
+    @classmethod
+    def _play(cls, wave: np.ndarray, volume: float = 0.6):
+        try:
+            import sounddevice as sd
+            buf = (wave * volume * 32767).astype(np.int16)
+            sd.play(buf, cls.SR, blocking=False)
+        except Exception as e:
+            logger.debug(f"SoundFX play error: {e}")
+
+    @classmethod
+    def _tone(cls, freq: float, duration: float, decay: float = 4.0) -> np.ndarray:
+        t = np.linspace(0, duration, int(cls.SR * duration), endpoint=False)
+        wave = np.sin(2 * np.pi * freq * t) * np.exp(-decay * t)
+        return wave.astype(np.float32)
+
+    @classmethod
+    def _chord(cls, freqs: list, duration: float, decay: float = 4.0) -> np.ndarray:
+        wave = sum(cls._tone(f, duration, decay) for f in freqs)
+        return wave / len(freqs)
+
+    @classmethod
+    def boot(cls):
+        """JARVIS boot chime — rising arpeggio."""
+        def _play():
+            notes = [523, 659, 784, 1047]   # C5 E5 G5 C6
+            parts = []
+            for i, f in enumerate(notes):
+                t = np.linspace(0, 0.12, int(cls.SR * 0.12), endpoint=False)
+                wave = np.sin(2 * np.pi * f * t) * np.exp(-8 * t)
+                silence = np.zeros(int(cls.SR * 0.04))
+                parts.extend([wave.astype(np.float32), silence])
+            full = np.concatenate(parts)
+            cls._play(full, volume=0.35)
+        threading.Thread(target=_play, daemon=True).start()
+
+    @classmethod
+    def confirm(cls):
+        """Soft double-ping — action confirmed."""
+        def _play():
+            t1 = cls._tone(880, 0.08, decay=12)
+            gap = np.zeros(int(cls.SR * 0.05))
+            t2 = cls._tone(1100, 0.08, decay=12)
+            cls._play(np.concatenate([t1, gap, t2]), volume=0.25)
+        threading.Thread(target=_play, daemon=True).start()
+
+    @classmethod
+    def alert(cls):
+        """Urgent alert — low double beep."""
+        def _play():
+            t1 = cls._tone(330, 0.15, decay=5)
+            gap = np.zeros(int(cls.SR * 0.08))
+            t2 = cls._tone(330, 0.15, decay=5)
+            cls._play(np.concatenate([t1, gap, t2]), volume=0.4)
+        threading.Thread(target=_play, daemon=True).start()
+
+    @classmethod
+    def wake(cls):
+        """Wake-word detected ping."""
+        def _play():
+            wave = cls._tone(1200, 0.07, decay=15)
+            cls._play(wave, volume=0.2)
+        threading.Thread(target=_play, daemon=True).start()
+
+    @classmethod
+    def speak_start(cls):
+        """Subtle click before JARVIS speaks."""
+        def _play():
+            wave = cls._tone(600, 0.04, decay=20)
+            cls._play(wave, volume=0.15)
+        threading.Thread(target=_play, daemon=True).start()
+
+    @classmethod
+    def error(cls):
+        """Error tone — descending."""
+        def _play():
+            t1 = cls._tone(440, 0.12, decay=6)
+            gap = np.zeros(int(cls.SR * 0.06))
+            t2 = cls._tone(330, 0.18, decay=4)
+            cls._play(np.concatenate([t1, gap, t2]), volume=0.3)
+        threading.Thread(target=_play, daemon=True).start()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice Engine
+# ─────────────────────────────────────────────────────────────────────────────
 
 class VoiceEngine:
-    """
-    Voice input (Whisper STT) and output (pyttsx3 TTS).
-
-    Usage:
-        voice = VoiceEngine(config)
-        voice.initialize()
-        voice.start_listening(on_command=callback)
-        voice.speak("Hello!")
-    """
-
     def __init__(self, config: dict):
         self.config = config
-        self.whisper_model = None
-        self.tts_engine = None
-        self.whisper_size = config.get("whisper_model", "tiny")
-        self._listening = False
-        self._on_command = None
+        self.whisper_model  = None
+        self.tts_engine     = None
+        self.whisper_size   = config.get("whisper_model", "tiny")
+        self._listening     = False
+        self._on_command    = None
         self._on_status_change = None
         self._wake_word_enabled = config.get("wake_word", True)
-        self._tts_lock = threading.Lock()
-        self._voice_rate = config.get("voice_rate", 175)
-        self._voice_volume = config.get("voice_volume", 0.9)
-        self._voice_id = config.get("voice_id", None)
+        self._tts_lock      = threading.Lock()
+        self._voice_rate    = config.get("voice_rate", 155)    # slightly slower = more authoritative
+        self._voice_volume  = config.get("voice_volume", 0.95)
+        self._voice_id      = config.get("voice_id", None)
+        self._sound_enabled = config.get("sound_effects", True)
 
     def initialize(self):
-        """Load Whisper STT model and init pyttsx3 TTS."""
-        # -- Speech-to-Text: Whisper --
+        self._load_whisper()
+        self._load_tts()
+        if self._sound_enabled:
+            SoundFX.boot()
+
+    # ── Whisper STT ───────────────────────────────────────────────────────────
+
+    def _load_whisper(self):
         try:
             import whisper
-            logger.info(f"Loading Whisper '{self.whisper_size}' model...")
+            logger.info(f"Loading Whisper '{self.whisper_size}'...")
             self.whisper_model = whisper.load_model(self.whisper_size)
             logger.info("Whisper STT ready")
         except ImportError:
-            logger.error("openai-whisper not installed. Run: pip install openai-whisper")
+            logger.error("openai-whisper not installed: pip install openai-whisper")
         except Exception as e:
             logger.error(f"Whisper load failed: {e}")
 
-        # -- Text-to-Speech: pyttsx3 (Windows SAPI5) --
+    # ── TTS ───────────────────────────────────────────────────────────────────
+
+    def _load_tts(self):
         try:
             import pyttsx3
-            self.tts_engine = pyttsx3.init()
-            self.tts_engine.setProperty("rate", self._voice_rate)
-            self.tts_engine.setProperty("volume", self._voice_volume)
+            engine = pyttsx3.init()
+            engine.setProperty("rate",   self._voice_rate)
+            engine.setProperty("volume", self._voice_volume)
 
-            voices = self.tts_engine.getProperty("voices")
+            voices = engine.getProperty("voices")
             if voices:
-                voice_names = [v.name for v in voices]
-                logger.info(f"Available TTS voices: {voice_names}")
+                names = [v.name.lower() for v in voices]
+                logger.info(f"Available TTS voices: {[v.name for v in voices]}")
 
+                selected = None
+
+                # Try explicit voice_id from config
                 if self._voice_id:
                     for v in voices:
                         if self._voice_id.lower() in v.name.lower() or self._voice_id == v.id:
-                            self.tts_engine.setProperty("voice", v.id)
-                            logger.info(f"TTS voice set to: {v.name}")
-                            break
-                else:
-                    # Try to pick a male English voice for Jarvis feel
-                    for v in voices:
-                        name_lower = v.name.lower()
-                        if "david" in name_lower or "mark" in name_lower or "james" in name_lower:
-                            self.tts_engine.setProperty("voice", v.id)
-                            logger.info(f"TTS voice auto-selected: {v.name}")
+                            selected = v
                             break
 
-            logger.info("pyttsx3 TTS ready (Windows SAPI5)")
+                # Try preferred voices in priority order
+                if not selected:
+                    for pref in PREFERRED_VOICES:
+                        for v in voices:
+                            if pref in v.name.lower():
+                                selected = v
+                                break
+                        if selected:
+                            break
+
+                if selected:
+                    engine.setProperty("voice", selected.id)
+                    logger.info(f"TTS voice: {selected.name}")
+                else:
+                    logger.info("TTS voice: using system default")
+
+            self.tts_engine = engine
+            logger.info("TTS engine ready")
+
         except ImportError:
-            logger.error("pyttsx3 not installed. Run: pip install pyttsx3")
+            logger.error("pyttsx3 not installed: pip install pyttsx3")
         except Exception as e:
             logger.error(f"TTS init failed: {e}")
 
-    # -- Speech-to-Text --
+    # ── Listening loop ────────────────────────────────────────────────────────
 
     def start_listening(self, on_command=None, on_status_change=None):
-        self._on_command = on_command
+        self._on_command       = on_command
         self._on_status_change = on_status_change
         self._listening = True
-        thread = threading.Thread(target=self._listen_loop, daemon=True)
-        thread.start()
-        logger.info("Voice listening started - say 'Nexus' to activate")
+        threading.Thread(target=self._listen_loop, daemon=True).start()
+        logger.info("Voice listening started — say 'Nexus' to activate")
 
     def stop_listening(self):
         self._listening = False
 
     def _listen_loop(self):
         import sounddevice as sd
-
         while self._listening:
             try:
                 self._set_status("listening")
-                audio_data = self._record_until_silence(sd)
-
-                if audio_data is None or len(audio_data) < SAMPLE_RATE * MIN_RECORDING_DURATION:
+                audio = self._record_until_silence(sd)
+                if audio is None or len(audio) < SAMPLE_RATE * MIN_RECORDING_S:
                     continue
 
                 self._set_status("processing")
-                text = self._transcribe(audio_data)
-
+                text = self._transcribe(audio)
                 if not text or len(text.strip()) < 2:
                     continue
 
                 text = text.strip()
-                logger.info(f">>> HEARD: \"{text}\"")
-                print(f"\n[VOICE] Heard: \"{text}\"\n")  # Also print to terminal
+                logger.info(f'HEARD: "{text}"')
 
                 if self._wake_word_enabled:
                     text_lower = text.lower()
-                    # Check for exact wake word or common misheard variants
-                    wake_found = False
-                    wake_end = 0
+                    wake_found, wake_end = False, 0
+
                     for variant in WAKE_WORD_VARIANTS:
                         if variant in text_lower:
                             wake_found = True
@@ -142,30 +259,27 @@ class VoiceEngine:
                             wake_end = idx + len(variant)
                             break
 
-                    # Also try fuzzy matching on the first word
                     if not wake_found:
-                        first_word = text_lower.split()[0] if text_lower.split() else ""
+                        first = text_lower.split()[0] if text_lower.split() else ""
                         try:
                             from rapidfuzz import fuzz
-                            score = fuzz.ratio(first_word, "nexus")
-                            if score > 60:
+                            if fuzz.ratio(first, "nexus") > 60:
                                 wake_found = True
-                                wake_end = len(first_word) + (1 if len(text_lower) > len(first_word) else 0)
-                                logger.info(f"Fuzzy wake word match: '{first_word}' (score: {score})")
+                                wake_end = len(first) + 1
                         except ImportError:
                             pass
 
                     if not wake_found:
-                        logger.debug(f"No wake word in: {text}")
                         continue
 
-                    text = text[wake_end:].strip().lstrip(",").lstrip(".").strip()
+                    if self._sound_enabled:
+                        SoundFX.wake()
+
+                    text = text[wake_end:].strip().lstrip(",.").strip()
                     if not text:
                         if self._on_command:
                             self._on_command("[wake]")
                         continue
-
-                    logger.info(f">>> COMMAND: \"{text}\"")
 
                 if self._on_command:
                     self._on_command(text)
@@ -176,68 +290,66 @@ class VoiceEngine:
                 time.sleep(1)
 
     def _record_until_silence(self, sd):
-        chunks = []
-        silent_chunks = 0
-        chunk_duration = 0.1
-        chunk_size = int(SAMPLE_RATE * chunk_duration)
-        max_silent = int(SILENCE_DURATION / chunk_duration)
-        max_chunks = int(30 / chunk_duration)
-        total_chunks = 0
-        peak_rms = 0
+        chunks, silent_chunks, total_chunks = [], 0, 0
+        chunk_dur  = 0.1
+        chunk_size = int(SAMPLE_RATE * chunk_dur)
+        max_silent = int(SILENCE_DURATION / chunk_dur)
+        max_chunks = int(30 / chunk_dur)
+        peak_rms = 0.0
 
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                            blocksize=chunk_size) as stream:
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS,
+                            dtype=DTYPE, blocksize=chunk_size) as stream:
             while self._listening and total_chunks < max_chunks:
                 data, _ = stream.read(chunk_size)
                 chunk = np.frombuffer(data, dtype=np.int16)
-                rms = np.sqrt(np.mean(chunk.astype(np.float32) ** 2))
+                rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
                 peak_rms = max(peak_rms, rms)
-
                 if rms > SILENCE_THRESHOLD:
                     chunks.append(chunk)
                     silent_chunks = 0
-                elif len(chunks) > 0:
+                elif chunks:
                     chunks.append(chunk)
                     silent_chunks += 1
                     if silent_chunks >= max_silent:
                         break
                 total_chunks += 1
 
-        if chunks:
-            duration = len(chunks) * chunk_duration
-            logger.info(f"Recorded {duration:.1f}s of audio (peak RMS: {peak_rms:.0f})")
-        
         return np.concatenate(chunks) if chunks else None
 
-    def _transcribe(self, audio_data: np.ndarray) -> str:
+    def _transcribe(self, audio: np.ndarray) -> str:
         if self.whisper_model is None:
             return ""
-        audio_float = audio_data.astype(np.float32) / 32768.0
-        result = self.whisper_model.transcribe(audio_float, language="en", fp16=False)
+        audio_f = audio.astype(np.float32) / 32768.0
+        result = self.whisper_model.transcribe(audio_f, language="en", fp16=False)
         return result.get("text", "")
 
-    # -- Text-to-Speech --
+    # ── TTS speak ─────────────────────────────────────────────────────────────
 
     def speak(self, text: str):
-        """Say text out loud using Windows built-in voices. Blocks until done."""
+        """Speak text using Windows SAPI5 — blocks until done."""
         if not text:
             return
         if self.tts_engine is None:
             print(f"[NEXUS]: {text}")
             return
 
+        if self._sound_enabled:
+            SoundFX.speak_start()
+
+        # Strip markdown that sounds weird when spoken
+        clean = self._clean_for_speech(text)
+
         with self._tts_lock:
             try:
-                self.tts_engine.say(text)
+                self.tts_engine.say(clean)
                 self.tts_engine.runAndWait()
             except RuntimeError:
-                # Engine sometimes gets stuck after interrupts - reinitialize
                 try:
                     import pyttsx3
                     self.tts_engine = pyttsx3.init()
-                    self.tts_engine.setProperty("rate", self._voice_rate)
+                    self.tts_engine.setProperty("rate",   self._voice_rate)
                     self.tts_engine.setProperty("volume", self._voice_volume)
-                    self.tts_engine.say(text)
+                    self.tts_engine.say(clean)
                     self.tts_engine.runAndWait()
                 except Exception as e:
                     logger.error(f"TTS recovery failed: {e}")
@@ -245,18 +357,36 @@ class VoiceEngine:
                 logger.error(f"TTS error: {e}")
 
     def speak_async(self, text: str):
-        """Non-blocking version of speak."""
         threading.Thread(target=self.speak, args=(text,), daemon=True).start()
 
+    @staticmethod
+    def _clean_for_speech(text: str) -> str:
+        """Strip markdown / symbols that sound bad when read aloud."""
+        import re
+        # Remove markdown code fences
+        text = re.sub(r"```[\s\S]*?```", "code block omitted.", text)
+        # Remove inline code
+        text = re.sub(r"`[^`]+`", "", text)
+        # Remove markdown bold/italic
+        text = re.sub(r"\*+([^*]+)\*+", r"\1", text)
+        # Remove URLs
+        text = re.sub(r"https?://\S+", "link", text)
+        # Remove emoji-ish unicode blocks (rough)
+        text = re.sub(r"[◆►▶◐◓◑◒●📁📄✅❌⚠️🔴⏳🔄⏸️🎬⌨️🧠🖨️📝🎙️📋🌐⏱️⚙️💻🤖👁️]", "", text)
+        # Collapse multiple spaces/newlines
+        text = re.sub(r"\n+", ". ", text)
+        text = re.sub(r" {2,}", " ", text)
+        return text.strip()
+
+    # ── Utilities ─────────────────────────────────────────────────────────────
+
     def list_voices(self) -> list[dict]:
-        """Return all available system voices."""
         if not self.tts_engine:
             return []
         voices = self.tts_engine.getProperty("voices")
         return [{"id": v.id, "name": v.name} for v in voices]
 
     def set_voice(self, voice_name: str) -> bool:
-        """Switch voice by name (e.g. 'David', 'Zira', 'Mark')."""
         if not self.tts_engine:
             return False
         voices = self.tts_engine.getProperty("voices")
@@ -268,10 +398,21 @@ class VoiceEngine:
         return False
 
     def set_rate(self, rate: int):
-        """Adjust speaking speed. Default 175 WPM. Lower = slower."""
+        self._voice_rate = rate
         if self.tts_engine:
-            self._voice_rate = rate
             self.tts_engine.setProperty("rate", rate)
+
+    def play_confirm(self):
+        if self._sound_enabled:
+            SoundFX.confirm()
+
+    def play_alert(self):
+        if self._sound_enabled:
+            SoundFX.alert()
+
+    def play_error(self):
+        if self._sound_enabled:
+            SoundFX.error()
 
     def _set_status(self, status: str):
         if self._on_status_change:

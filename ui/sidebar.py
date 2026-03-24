@@ -1,153 +1,221 @@
-"""Sidebar — JARVIS-style system status, live stats, and quick actions."""
+"""Sidebar — JARVIS HUD with arc reactor, arc gauges, and quick actions."""
 
 import threading
+import tkinter as tk
 import customtkinter as ctk
 from datetime import datetime
 from ui.theme import COLORS, FONTS, SPACING
+from ui.hud_canvas import ArcReactor, ArcGauge
 
 
 class Sidebar(ctk.CTkFrame):
     def __init__(self, parent, plugin_manager, on_quick_action=None):
-        super().__init__(parent, fg_color=COLORS["bg_secondary"], width=270, corner_radius=0)
+        super().__init__(parent, fg_color=COLORS["bg_secondary"], width=272, corner_radius=0)
         self.plugin_manager = plugin_manager
         self.on_quick_action = on_quick_action
         self.pack_propagate(False)
-        self._sysmon = None
+        self._sysmon   = None
+        self._cpu_gauge = None
+        self._ram_gauge = None
+        self._dsk_gauge = None
         self._build()
         self._start_clock()
         self._start_stats()
 
-    # ── Build ──────────────────────────────────────────────────
+    # ── Build ─────────────────────────────────────────────────────────────────
 
     def _build(self):
-        # ── Logo ──
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=SPACING["md"], pady=(SPACING["md"], 0))
+        self._build_header()
+        self._divider()
+        self._build_gauges()
+        self._divider()
+        self._build_connections()
+        self._divider()
+        self._build_quick_actions()
+        self._build_footer()
 
-        logo_row = ctk.CTkFrame(header, fg_color="transparent")
-        logo_row.pack(fill="x")
+    def _build_header(self):
+        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr.pack(fill="x", padx=SPACING["sm"], pady=(SPACING["sm"], 0))
+
+        # Left: arc reactor + title
+        left = ctk.CTkFrame(hdr, fg_color="transparent")
+        left.pack(side="left", fill="both", expand=True)
+
+        title_row = ctk.CTkFrame(left, fg_color="transparent")
+        title_row.pack(anchor="w")
         ctk.CTkLabel(
-            logo_row, text="◆ NEXUS",
-            font=("Segoe UI", 22, "bold"),
+            title_row, text="◆ NEXUS",
+            font=("Segoe UI", 20, "bold"),
             text_color=COLORS["accent"],
         ).pack(side="left")
-        self.clock_label = ctk.CTkLabel(
-            logo_row, text="",
-            font=FONTS["mono_small"],
-            text_color=COLORS["text_muted"],
-        )
-        self.clock_label.pack(side="right")
 
         ctk.CTkLabel(
-            header, text="J.A.R.V.I.S.  •  100% Local",
-            font=FONTS["small"],
+            left, text="J.A.R.V.I.S.  ·  100% Local  ·  Offline",
+            font=("Cascadia Code", 9),
             text_color=COLORS["text_muted"],
         ).pack(anchor="w", pady=(2, 0))
 
-        self._divider()
+        self.clock_label = ctk.CTkLabel(
+            left, text="",
+            font=("Cascadia Code", 10, "bold"),
+            text_color=COLORS["accent"],
+        )
+        self.clock_label.pack(anchor="w")
 
-        # ── System Stats ──
+        # Right: arc reactor
+        self._reactor = ArcReactor(hdr, size=76, bg=COLORS["bg_secondary"])
+        self._reactor.pack(side="right", padx=(SPACING["xs"], 0))
+
+    def _build_gauges(self):
         ctk.CTkLabel(
-            self, text="SYSTEM", font=FONTS["label"],
+            self, text="SYSTEM STATUS",
+            font=("Cascadia Code", 9, "bold"),
             text_color=COLORS["text_muted"],
-        ).pack(anchor="w", padx=SPACING["md"], pady=(0, SPACING["xs"]))
+        ).pack(anchor="w", padx=SPACING["md"], pady=(SPACING["xs"], SPACING["xs"]))
 
-        self.stats_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.stats_frame.pack(fill="x", padx=SPACING["md"])
-        self._build_stat_row("CPU", "cpu_bar",   "cpu_label",  COLORS["cpu_bar"])
-        self._build_stat_row("RAM", "ram_bar",   "ram_label",  COLORS["ram_bar"])
-        self._build_stat_row("DSK", "disk_bar",  "disk_label", COLORS["disk_bar"])
+        gauge_row = ctk.CTkFrame(self, fg_color="transparent")
+        gauge_row.pack(fill="x", padx=SPACING["sm"], pady=(0, SPACING["xs"]))
 
-        self._divider()
+        self._cpu_gauge = ArcGauge(gauge_row, label="CPU", color=COLORS["cpu_bar"],
+                                   size=72, bg=COLORS["bg_secondary"])
+        self._cpu_gauge.pack(side="left", expand=True)
 
-        # ── Connections ──
+        self._ram_gauge = ArcGauge(gauge_row, label="RAM", color=COLORS["ram_bar"],
+                                   size=72, bg=COLORS["bg_secondary"])
+        self._ram_gauge.pack(side="left", expand=True)
+
+        self._dsk_gauge = ArcGauge(gauge_row, label="DISK", color=COLORS["disk_bar"],
+                                   size=72, bg=COLORS["bg_secondary"])
+        self._dsk_gauge.pack(side="left", expand=True)
+
+    def _build_connections(self):
         ctk.CTkLabel(
-            self, text="CONNECTIONS", font=FONTS["label"],
+            self, text="SUBSYSTEMS",
+            font=("Cascadia Code", 9, "bold"),
             text_color=COLORS["text_muted"],
-        ).pack(anchor="w", padx=SPACING["md"], pady=(0, SPACING["xs"]))
+        ).pack(anchor="w", padx=SPACING["md"], pady=(SPACING["xs"], SPACING["xs"]))
 
         self.connections_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.connections_frame.pack(fill="x", padx=SPACING["md"])
+        self.connections_frame.pack(fill="x", padx=SPACING["sm"])
 
-        self._divider()
-
-        # ── Quick Actions ──
+    def _build_quick_actions(self):
         ctk.CTkLabel(
-            self, text="QUICK ACTIONS", font=FONTS["label"],
+            self, text="QUICK ACCESS",
+            font=("Cascadia Code", 9, "bold"),
             text_color=COLORS["text_muted"],
-        ).pack(anchor="w", padx=SPACING["md"], pady=(0, SPACING["xs"]))
+        ).pack(anchor="w", padx=SPACING["md"], pady=(SPACING["xs"], SPACING["xs"]))
+
+        # Scrollable quick actions
+        scroll = ctk.CTkScrollableFrame(
+            self,
+            fg_color="transparent",
+            scrollbar_button_color=COLORS["bg_tertiary"],
+            scrollbar_button_hover_color=COLORS["border"],
+            height=220,
+        )
+        scroll.pack(fill="x", padx=SPACING["xs"], expand=False)
 
         quick_actions = [
-            ("📧  Check Email",          "Check my email inbox"),
-            ("💬  WhatsApp Chats",        "List my recent WhatsApp chats"),
-            ("🎮  Discord DMs",           "Check my Discord DMs"),
-            ("🐙  GitHub Notifications",  "Check my GitHub notifications"),
-            ("🚀  My Projects",           "List my projects"),
+            # Communication
+            ("✉  Check Email",           "Check my email inbox"),
+            ("💬  WhatsApp",              "List my recent WhatsApp chats"),
+            ("🎮  Discord",               "Check my Discord DMs"),
+            ("🐙  GitHub",                "Check my GitHub notifications"),
+            # Business
+            ("🚀  Projects",              "List my projects"),
             ("💰  Invoices",              "List my invoices"),
+            ("📋  Write Proposal",        "Write a proposal"),
+            ("⏱  Today's Time",          "Today's time"),
+            ("🌐  Client Portal",         "Start client portal"),
+            ("📝  Expense Summary",       "Expense summary"),
+            ("💳  Profit & Loss",         "Profit and loss"),
+            # Intelligence
+            ("👁  Screen Analysis",       "What's on screen"),
+            ("📡  Morning Briefing",      "Run morning routine"),
+            ("🤖  Run Macro",             "List macros"),
+            ("📰  News Digest",           "Today's news"),
+            ("🔬  Research",              "Research a topic"),
+            # Productivity
+            ("🍅  Start Pomodoro",        "Start pomodoro focus session"),
+            ("🎯  Focus Status",          "Focus status"),
+            ("✅  Habits Today",          "Today's habits"),
+            ("📅  Today's Schedule",      "Today's schedule"),
+            # System
             ("⚡  System Stats",          "Get system stats"),
-            ("🌤️  Weather",               "Get weather"),
-            ("📡  Morning Briefing",      "Good morning"),
-            ("🌐  Phone URL",             "Get web remote URL"),
+            ("🌤  Weather",               "Get weather"),
+            ("🧠  AI Models",             "List models"),
+            ("💻  List Scripts",          "List scripts"),
+            ("🧹  Clean Temp",            "Clean temp files"),
+            # Security & Network
+            ("🌐  My IP",                 "My IP address"),
+            ("🔐  Gen Password",          "Generate password"),
+            # CAD & Print
+            ("⚙  CAD Parts",             "List parts"),
+            ("🖨  Print Queue",           "Print queue"),
+            # Knowledge
+            ("📚  My Notes",              "List notes"),
+            ("🔍  Query My Docs",         "Query documents"),
+            ("🌍  Translate",             "Translate text"),
+            # Fun
+            ("🌙  Dream Journal",         "List dreams"),
+            ("⬛  QR Code",              "List qr codes"),
+            # Remote
+            ("📱  Phone URL",             "Get web remote URL"),
+            ("⌨  Hotkeys",               "List hotkeys"),
         ]
+
         for label, cmd in quick_actions:
-            ctk.CTkButton(
-                self, text=label,
-                font=FONTS["small"],
+            btn = ctk.CTkButton(
+                scroll, text=label,
+                font=("Cascadia Code", 10),
                 fg_color="transparent",
                 hover_color=COLORS["bg_tertiary"],
                 text_color=COLORS["text_secondary"],
                 anchor="w",
-                height=30,
-                corner_radius=6,
+                height=26,
+                corner_radius=4,
                 command=lambda c=cmd: self._action(c),
-            ).pack(fill="x", padx=SPACING["sm"], pady=1)
+            )
+            btn.pack(fill="x", padx=2, pady=1)
 
-        # ── Footer ──
+    def _build_footer(self):
         ctk.CTkFrame(self, fg_color="transparent").pack(fill="both", expand=True)
+        self._divider()
         ctk.CTkLabel(
-            self, text="v2.0 • Ollama + Playwright + psutil",
-            font=("Segoe UI", 9),
+            self,
+            text="v2.2  ·  Ollama  ·  Playwright  ·  psutil",
+            font=("Cascadia Code", 8),
             text_color=COLORS["text_dim"],
-        ).pack(pady=SPACING["sm"])
-
-    def _build_stat_row(self, label: str, bar_attr: str, lbl_attr: str, color: str):
-        row = ctk.CTkFrame(self.stats_frame, fg_color="transparent")
-        row.pack(fill="x", pady=2)
-        ctk.CTkLabel(row, text=label, font=FONTS["hud"], text_color=COLORS["text_muted"], width=28).pack(side="left")
-
-        bar = ctk.CTkProgressBar(row, height=6, corner_radius=3, progress_color=color, fg_color=COLORS["bg_tertiary"])
-        bar.set(0)
-        bar.pack(side="left", fill="x", expand=True, padx=(4, 6))
-        setattr(self, bar_attr, bar)
-
-        lbl = ctk.CTkLabel(row, text="--", font=FONTS["hud"], text_color=COLORS["text_secondary"], width=40, anchor="e")
-        lbl.pack(side="right")
-        setattr(self, lbl_attr, lbl)
+        ).pack(pady=(SPACING["xs"], SPACING["sm"]))
 
     def _divider(self):
-        ctk.CTkFrame(self, fg_color=COLORS["border"], height=1).pack(fill="x", padx=SPACING["md"], pady=SPACING["sm"])
+        tk.Frame(self, bg=COLORS["border"], height=1).pack(
+            fill="x", padx=SPACING["md"], pady=SPACING["xs"]
+        )
 
-    # ── Clock ──────────────────────────────────────────────────
+    # ── Clock ─────────────────────────────────────────────────────────────────
 
     def _start_clock(self):
         self._update_clock()
 
     def _update_clock(self):
-        now = datetime.now().strftime("%H:%M")
         if hasattr(self, "clock_label"):
-            self.clock_label.configure(text=now)
-        self.after(15000, self._update_clock)
+            now = datetime.now()
+            self.clock_label.configure(
+                text=now.strftime("%H:%M:%S  ·  %a %d %b")
+            )
+        self.after(1000, self._update_clock)
 
-    # ── System stats ───────────────────────────────────────────
+    # ── Stats ─────────────────────────────────────────────────────────────────
 
     def _start_stats(self):
         threading.Thread(target=self._find_sysmon, daemon=True).start()
         self.after(3000, self._update_stats)
 
     def _find_sysmon(self):
-        """Wait for system_monitor plugin to load and store reference."""
         import time
-        for _ in range(20):
+        for _ in range(30):
             plugin = self.plugin_manager.get_plugin("system_monitor")
             if plugin and plugin.is_connected:
                 self._sysmon = plugin
@@ -161,42 +229,61 @@ class Sidebar(ctk.CTkFrame):
             ram  = psutil.virtual_memory().percent / 100
             disk = psutil.disk_usage("/").percent / 100
 
-            self.cpu_bar.set(cpu)
-            self.ram_bar.set(ram)
-            self.disk_bar.set(disk)
-
-            self.cpu_label.configure(text=f"{cpu*100:.0f}%")
-            self.ram_label.configure(text=f"{ram*100:.0f}%")
-            self.disk_label.configure(text=f"{disk*100:.0f}%")
+            if self._cpu_gauge:
+                self._cpu_gauge.set_value(cpu)
+            if self._ram_gauge:
+                self._ram_gauge.set_value(ram)
+            if self._dsk_gauge:
+                self._dsk_gauge.set_value(disk)
         except Exception:
             pass
         self.after(3000, self._update_stats)
 
-    # ── Connection status ──────────────────────────────────────
+    # ── Connection status ─────────────────────────────────────────────────────
+
+    HIDDEN_PLUGINS = {
+        "screen", "file_manager", "system_monitor", "weather_eye",
+        "project_manager", "invoice_system", "website_auditor",
+        "uptime_monitor", "memory", "llm_router", "print_queue",
+        "auto_documenter", "cad_engine", "hotkey_daemon",
+        # New background plugins
+        "ambient_monitor", "smart_calendar", "local_rag", "jarvis_memory_v2",
+        "knowledge_base", "habit_tracker", "expense_tracker",
+    }
 
     def update_status(self):
         for w in self.connections_frame.winfo_children():
             w.destroy()
 
         for info in self.plugin_manager.get_status_summary():
-            # Hide utility plugins from the connection list
-            if info["name"] in ("screen", "file_manager", "system_monitor", "weather_eye",
-                                "project_manager", "invoice_system", "website_auditor", "uptime_monitor"):
+            if info["name"] in self.HIDDEN_PLUGINS:
                 continue
-            row = ctk.CTkFrame(self.connections_frame, fg_color="transparent", height=26)
+            row = ctk.CTkFrame(self.connections_frame, fg_color="transparent", height=22)
             row.pack(fill="x", pady=1)
             row.pack_propagate(False)
-            dot_color = COLORS["success"] if info["connected"] else COLORS["text_muted"]
-            ctk.CTkLabel(
-                row, text="●", font=("Segoe UI", 9),
-                text_color=dot_color, width=14,
-            ).pack(side="left")
+
+            connected = info["connected"]
+            dot_color = COLORS["success"] if connected else COLORS["text_muted"]
+
+            # Pulse dot using tk.Canvas (1 pixel animated dot)
+            dot_canvas = tk.Canvas(row, width=10, height=10,
+                                   bg=COLORS["bg_secondary"], highlightthickness=0)
+            dot_canvas.pack(side="left", padx=(2, 0))
+            dot_canvas.create_oval(1, 1, 8, 8, fill=dot_color, outline="")
+
             ctk.CTkLabel(
                 row,
-                text=f"{info['icon']} {info['name']}  —  {info['status']}",
-                font=FONTS["small"],
-                text_color=COLORS["text_primary"] if info["connected"] else COLORS["text_muted"],
-            ).pack(side="left", padx=(4, 0))
+                text=f"{info['icon']} {info['name']}",
+                font=("Cascadia Code", 9),
+                text_color=COLORS["text_primary"] if connected else COLORS["text_muted"],
+            ).pack(side="left", padx=(3, 0))
+
+            ctk.CTkLabel(
+                row,
+                text=info["status"][:22],
+                font=("Cascadia Code", 8),
+                text_color=COLORS["success"] if connected else COLORS["error"],
+            ).pack(side="right", padx=(0, 4))
 
     def _action(self, cmd: str):
         if self.on_quick_action:

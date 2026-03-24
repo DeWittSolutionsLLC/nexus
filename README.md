@@ -1,51 +1,725 @@
-# Nexus - Fully Local AI Command Center
+# Nexus — J.A.R.V.I.S. Local AI Command Center
 
 100% offline. No API keys. No cloud. No subscriptions.
-Voice control, screen awareness, persistent memory, proactive briefings.
+Voice control · Screen awareness · Persistent memory · Proactive briefings · 50+ plugins.
+
+---
 
 ## Quick Start
 
-1. Install Ollama from https://ollama.com then:
-   ollama pull llama3.2:3b
+```bash
+# 1. Install Ollama then pull a model
+ollama pull llama3.2:3b
 
-2. Install Python dependencies:
-   pip install -r requirements.txt
-   python -m playwright install chromium
+# 2. Install Python dependencies
+pip install -r requirements.txt
+python -m playwright install chromium
 
-3. (Optional) For voice control, also install ffmpeg:
-   winget install ffmpeg
+# 3. Install new plugin deps (v2.2)
+pip install pyperclip feedparser PyMuPDF qrcode[pil] cryptography imageio imageio-ffmpeg
 
-4. Run:
-   python main.py
+# 4. (Optional) Voice control requires ffmpeg
+winget install ffmpeg
 
-5. Log into your accounts in the browser that opens (one-time).
+# 5. Launch
+python main.py
+```
 
-## Features
+Log into your accounts in the browser that opens on first run (one-time session).
 
-- Email (Gmail): Read inbox, send emails, search
-- WhatsApp: Send/read messages, list chats
-- Discord: Check DMs, send messages, browse servers
-- GitHub: Notifications, repos, issues, PRs
-- File Manager: Search, organize, disk usage, duplicates
-- Voice Control: Say "Nexus" + command, it talks back
-- Screen Awareness: Nexus can read what's on your screen
-- Memory: Remembers contacts, preferences, tasks across sessions
-- Proactive Briefings: "Good morning" for full status across everything
-
-## Voice Setup
-
-TTS uses Windows built-in voices (pyttsx3/SAPI5) - no downloads.
-STT uses Whisper "tiny" model (~75MB, auto-downloads on first run).
-Needs ffmpeg on PATH: winget install ffmpeg
-
-In settings.json you can adjust:
-- "whisper_model": "tiny" (or "base" for better accuracy, slower)
-- "voice_rate": 175 (words per minute)
-- "voice_id": null (auto-picks David; set "Zira" for female)
+---
 
 ## System Requirements
 
 - Windows 10/11
 - Python 3.10+
-- 8GB RAM minimum
-- Ollama running locally
+- 8 GB RAM minimum (16 GB recommended for Whisper + Ollama simultaneously)
+- Ollama running locally (`ollama serve`)
+
+---
+
+## Voice Setup
+
+- **Wake word:** Say `"Nexus"` then your command
+- **STT:** Whisper `tiny` model (~75 MB, auto-downloads on first run)
+- **TTS:** Windows SAPI5 neural voices — auto-selects best available (Guy Natural on Win11)
+- **ffmpeg required:** `winget install ffmpeg`
+
+`config/settings.json` voice options:
+```json
+"voice": {
+  "whisper_model": "tiny",
+  "voice_rate": 155,
+  "voice_volume": 0.95,
+  "wake_word": true,
+  "sound_effects": true
+}
+```
+
+---
+
+## Plugin Reference
+
+### Communication
+
+#### ✉ Email (`email`)
+Connect Gmail via browser session.
+| Command | Example |
+|---|---|
+| Check inbox | `"check my email"` |
+| Send email | `"send email to john@example.com subject Meeting body Let's meet tomorrow"` |
+| Search email | `"search email for invoice"` |
+| Reply to email | `"reply to last email"` |
+
+#### 💬 WhatsApp (`whatsapp`)
+Requires WhatsApp Web logged in.
+| Command | Example |
+|---|---|
+| List chats | `"list my WhatsApp chats"` |
+| Send message | `"WhatsApp John saying I'm on my way"` |
+| Read messages | `"read WhatsApp messages from Sarah"` |
+
+#### 🎮 Discord (`discord`)
+| Command | Example |
+|---|---|
+| Check DMs | `"check my Discord DMs"` |
+| Send message | `"Discord message general saying hello"` |
+| List servers | `"list my Discord servers"` |
+
+#### 🐙 GitHub (`github`)
+| Command | Example |
+|---|---|
+| Notifications | `"check GitHub notifications"` |
+| List repos | `"list my GitHub repos"` |
+| Create issue | `"create GitHub issue in my-repo title Bug found"` |
+| List PRs | `"list open pull requests"` |
+
+#### 📱 Google Voice (`gvoice`)
+| Command | Example |
+|---|---|
+| Send SMS | `"text John saying be there in 10"` |
+| Read texts | `"read my texts"` |
+| Make call | `"call mom"` |
+
+#### 📨 Telegram (`telegram`)
+Receive and respond to commands via Telegram bot.
+Requires `telegram_token` in settings.json.
+
+---
+
+### Business & Finance
+
+#### 🚀 Project Manager (`project_manager`)
+Tracks clients and projects with deadlines and rates.
+| Command | Example |
+|---|---|
+| List projects | `"list my projects"` |
+| Add project | `"add project Website Redesign for Acme Corp rate 150 deadline 2026-04-01"` |
+| Project summary | `"project summary"` |
+| Overdue projects | `"show overdue projects"` |
+
+#### 💰 Invoice System (`invoice_system`)
+| Command | Example |
+|---|---|
+| List invoices | `"list my invoices"` |
+| Create invoice | `"create invoice for Acme Corp 3000 dollars for website work"` |
+| Revenue summary | `"revenue summary"` |
+| Mark paid | `"mark invoice 3 as paid"` |
+
+#### 📋 Proposal Writer (`proposal_writer`)
+AI-generated PDF proposals via Ollama + fpdf2.
+| Command | Example |
+|---|---|
+| Write proposal | `"write proposal for e-commerce website for TechCo 5000 dollars"` |
+| List proposals | `"list my proposals"` |
+
+#### ⏱ Time Tracker (`time_tracker`)
+Passive window-title tracking + manual logging.
+| Command | Example |
+|---|---|
+| Start tracking | `"start tracking time"` |
+| Stop tracking | `"stop tracking"` |
+| Today's hours | `"today's time"` |
+| Weekly report | `"time this week"` |
+| Log manual | `"log 2 hours on Project Alpha"` |
+
+#### 🌐 Client Portal (`client_portal`)
+Password-protected web portal for clients (Flask, port 5001).
+| Command | Example |
+|---|---|
+| Start portal | `"start client portal"` |
+| Add client | `"add client Acme Corp with password secret123"` |
+| List clients | `"list portal clients"` |
+| Get URL | `"get phone URL"` |
+
+#### 📝 Expense Tracker (`expense_tracker`)
+Track business income and expenses with categories.
+| Command | Example |
+|---|---|
+| Add expense | `"add expense 49.99 category Software description VS Code license"` |
+| Add income | `"add income 2500 from Acme Corp consulting"` |
+| Monthly summary | `"expense summary"` |
+| Profit & loss | `"profit and loss"` |
+| List expenses | `"list expenses this month"` |
+
+**Categories:** Software, Hardware, Marketing, Travel, Meals, Utilities, Salary, Freelance, Other
+
+#### 📄 Contract Generator (`contract_generator`)
+AI-drafted contracts exported as PDF (fpdf2) or .txt fallback.
+| Command | Example |
+|---|---|
+| Generate contract | `"generate freelance contract for Acme Corp project Website Redesign amount 5000"` |
+| List contracts | `"list contracts"` |
+
+**Contract types:** `freelance`, `nda`, `service_agreement`, `employment`, `consulting`
+
+#### ✉ Email Composer (`email_composer`)
+AI drafts professional emails; sends via SMTP if configured.
+| Command | Example |
+|---|---|
+| Compose email | `"compose email to ceo@acme.com subject Partnership key points we offer X Y Z tone professional"` |
+| Improve email | `"improve this email: [paste text]"` |
+| Reply template | `"write a reply to decline politely"` |
+| List drafts | `"list email drafts"` |
+
+**Tones:** `professional`, `friendly`, `formal`, `urgent`
+
+#### 🎯 Competitor Tracker (`competitor_tracker`)
+Monitors competitor websites and news via DuckDuckGo + Ollama summaries.
+| Command | Example |
+|---|---|
+| Add competitor | `"add competitor OpenAI url openai.com"` |
+| Check competitor | `"check competitor OpenAI"` |
+| Full report | `"competitor report"` |
+| Check all | `"check all competitors"` |
+
+---
+
+### Intelligence & Awareness
+
+#### 👁 Vision AI (`vision_ai`)
+Screen capture + LLaVA vision model analysis.
+| Command | Example |
+|---|---|
+| Describe screen | `"what's on screen"` |
+| Analyze image | `"analyze image at C:/screenshot.png"` |
+| Read UI | `"read the UI on screen"` |
+| Find on screen | `"find the submit button on screen"` |
+
+#### 👁 Ambient Monitor (`ambient_monitor`)
+Passive background tracking of active windows and screen time.
+| Command | Example |
+|---|---|
+| Activity summary | `"what have I been doing"` |
+| Screen time | `"screen time today"` |
+| Idle time | `"how long have I been idle"` |
+| Top apps | `"top apps today"` |
+
+#### 📋 Clipboard AI (`clipboard_ai`)
+AI-powered clipboard monitoring and transformations.
+| Command | Example |
+|---|---|
+| Get clipboard | `"get clipboard"` |
+| Transform | `"translate clipboard to Spanish"` |
+| Fix grammar | `"fix grammar in clipboard"` |
+| Summarize | `"summarize clipboard"` |
+| History | `"clipboard history"` |
+| Smart paste | `"smart paste"` |
+
+#### 🖥 App Controller (`app_controller`)
+Launch, close, and focus Windows applications.
+| Command | Example |
+|---|---|
+| Open app | `"open notepad"` / `"launch chrome"` |
+| Close app | `"close spotify"` |
+| List running | `"list running apps"` |
+| Focus app | `"focus vscode"` |
+
+**Known apps:** notepad, calculator, browser, chrome, firefox, vscode, explorer, spotify, discord, terminal
+
+#### 🔬 Research Agent (`research_agent`)
+DuckDuckGo search + Ollama summarization, saves reports to `~/NexusScripts/research/`.
+| Command | Example |
+|---|---|
+| Quick research | `"research quantum computing"` |
+| Deep research | `"deep research on AI regulation 2026"` |
+| Web search | `"search for Python asyncio tutorial"` |
+| Summarize URL | `"summarize url https://..."` |
+| List reports | `"list research reports"` |
+
+#### 📰 News Digest (`news_digest`)
+Aggregates RSS feeds and summarizes with Ollama.
+| Command | Example |
+|---|---|
+| Get digest | `"today's news"` |
+| Topic filter | `"news about AI"` |
+| Raw headlines | `"get headlines"` |
+| Add feed | `"add feed TechCrunch url https://techcrunch.com/feed/"` |
+| List feeds | `"list news feeds"` |
+
+**Default feeds:** BBC News, Reuters, Hacker News, TechCrunch
+
+#### 📚 Knowledge Base (`knowledge_base`)
+Personal note store with full-text search and tags.
+| Command | Example |
+|---|---|
+| Add note | `"add note title Python Tips content Use f-strings tags python coding"` |
+| Search | `"search notes for async"` |
+| List notes | `"list my notes"` |
+| Get note | `"get note Python Tips"` |
+| Stats | `"knowledge stats"` |
+
+#### 📄 PDF Reader (`pdf_reader`)
+Extract, summarize, and query PDF files via PyMuPDF/pdfplumber/pypdf + Ollama.
+| Command | Example |
+|---|---|
+| Summarize PDF | `"summarize PDF at C:/docs/report.pdf"` |
+| Ask PDF | `"ask PDF C:/contract.pdf what are the payment terms"` |
+| Extract page | `"get page 3 of C:/report.pdf"` |
+| List recent PDFs | `"list recent PDFs"` |
+
+---
+
+### System & Security
+
+#### ⚡ System Monitor (`system_monitor`)
+Real-time CPU, RAM, disk, network, process stats.
+| Command | Example |
+|---|---|
+| System stats | `"system stats"` |
+| Full report | `"full system report"` |
+| Disk usage | `"disk usage"` |
+
+#### ⚡ System Optimizer (`system_optimizer`)
+Cleans temp files, manages startup items, frees RAM.
+| Command | Example |
+|---|---|
+| Clean temp | `"clean temp files"` |
+| Kill heavy processes | `"kill heavy processes"` |
+| Top processes | `"top processes"` |
+| Startup items | `"show startup programs"` |
+| Disk cleanup | `"disk cleanup C:/Projects"` |
+| Defrag check | `"check defrag"` |
+
+#### 💾 Backup Manager (`backup_manager`)
+Zip-based backup jobs stored in `~/NexusScripts/backup_config.json`.
+| Command | Example |
+|---|---|
+| Add backup job | `"add backup job Projects source C:/Projects destination D:/Backups"` |
+| Run backup | `"run backup Projects"` |
+| Run all | `"run all backups"` |
+| List backups | `"list backups"` |
+| Restore | `"restore backup Projects file backup_2026-03-23.zip to C:/Restore"` |
+
+#### 🌐 Network Scanner (`network_scanner`)
+Scans local network, checks ports, tests connectivity.
+| Command | Example |
+|---|---|
+| My IP | `"my IP address"` |
+| Scan network | `"scan my network"` |
+| Check internet | `"check internet connection"` |
+| Ping host | `"ping 192.168.1.1"` |
+| Check port | `"check port 80 on 192.168.1.100"` |
+| Speed test | `"simple speed test"` |
+
+#### 🔐 Password Vault (`password_vault`)
+AES-encrypted local vault using Fernet + PBKDF2 (falls back to XOR if `cryptography` not installed).
+| Command | Example |
+|---|---|
+| Setup vault | `"setup vault with master password mySecretPass"` |
+| Add password | `"add password for GitHub username john password abc123 master mySecretPass"` |
+| Get password | `"get password for GitHub master mySecretPass"` |
+| List services | `"list services master mySecretPass"` |
+| Generate password | `"generate password"` |
+| Check strength | `"check password strength hunter2"` |
+
+> Vault file: `~/NexusScripts/.vault` — never leaves your machine.
+
+---
+
+### Productivity
+
+#### 🍅 Pomodoro (`pomodoro`)
+25/5 focus timer with logging to `~/NexusScripts/pomodoro_log.json`.
+| Command | Example |
+|---|---|
+| Start | `"start pomodoro working on proposal"` |
+| Stop | `"stop pomodoro"` |
+| Status | `"pomodoro status"` |
+| Take break | `"take a break"` / `"take a long break"` |
+| Stats | `"pomodoro stats"` |
+
+#### ✅ Habit Tracker (`habit_tracker`)
+Daily/weekly habit tracking with streak calculation.
+| Command | Example |
+|---|---|
+| Add habit | `"add habit Morning Run description 5km every day"` |
+| Complete habit | `"complete habit Morning Run"` |
+| Today's habits | `"today's habits"` |
+| Streak | `"streak for Morning Run"` |
+| Stats | `"habit stats Morning Run"` |
+
+#### 📅 Smart Calendar (`smart_calendar`)
+Local calendar with reminders (checks every 60s) and natural language parsing.
+| Command | Example |
+|---|---|
+| Add event | `"add event Team Meeting on 2026-03-25 at 14:00 for 60 minutes"` |
+| Natural language | `"schedule standup tomorrow at 9am for 30 minutes"` |
+| Today's schedule | `"today's schedule"` |
+| Upcoming events | `"upcoming events"` |
+| Find free time | `"find free time tomorrow for 2 hours"` |
+| Delete event | `"delete event Team Meeting"` |
+
+#### 🎬 Screen Recorder (`screen_recorder`)
+Records screen to video (imageio/ffmpeg) or PNG frames fallback.
+| Command | Example |
+|---|---|
+| Screenshot | `"take a screenshot"` |
+| Start recording | `"start screen recording"` |
+| Stop recording | `"stop screen recording"` |
+| Recording status | `"recording status"` |
+| List recordings | `"list screen recordings"` |
+
+Files saved to: `~/NexusScripts/recordings/`
+
+---
+
+### CAD & Hardware
+
+#### ⚙ CAD Engine (`cad_engine`)
+AI generates CadQuery Python code from natural language, exports STL/STEP/DXF.
+Requires: `pip install cadquery` (large install, use conda for best results).
+| Command | Example |
+|---|---|
+| Generate part | `"design a mounting bracket 50x30mm with 4 holes"` |
+| Create shape | `"create a cylinder 20mm diameter 50mm tall"` |
+| List parts | `"list my CAD parts"` |
+| Export STL | `"export bracket to STL"` |
+| Export STEP | `"export bracket to STEP"` |
+| Open part | `"open bracket"` |
+
+#### 🖨 Print Queue (`print_queue`)
+3D print job tracking with filament estimates. Auto-detects Bambu/Prusa/Cura/Creality.
+| Command | Example |
+|---|---|
+| Add job | `"add print job Bracket file bracket.stl material PLA"` |
+| List jobs | `"print queue"` |
+| Update status | `"update print job Bracket status printing"` |
+| Complete job | `"complete print job Bracket"` |
+| Estimate | `"estimate print for bracket.stl infill 20"` |
+| Open slicer | `"open slicer for bracket.stl"` |
+
+---
+
+### Automation & Scripting
+
+#### 💻 Code Writer (`code_writer`)
+AI writes and runs Python scripts, saved to `~/NexusScripts/`.
+| Command | Example |
+|---|---|
+| Write script | `"write a script that renames all JPGs in a folder"` |
+| Run script | `"run script rename_jpgs"` |
+| Write and run | `"write and run a script to list all large files on C drive"` |
+| Edit script | `"edit script rename_jpgs add error handling"` |
+| List scripts | `"list scripts"` |
+
+#### 🤖 Task Automator (`task_automator`)
+Named multi-step macros stored in `~/NexusScripts/macros.json`.
+| Command | Example |
+|---|---|
+| Run macro | `"run morning routine"` |
+| List macros | `"list macros"` |
+| Create macro | `"create macro daily_standup with steps..."` |
+
+**Built-in macros:** `morning_routine`, `end_of_day`, `system_check`, `client_update`
+
+#### 🌐 Browser Recorder (`browser_recorder`)
+Records and replays Playwright browser sequences as JSON steps.
+| Command | Example |
+|---|---|
+| Start recording | `"start browser recording checkout_flow"` |
+| Stop recording | `"stop recording"` |
+| Play recording | `"play recording checkout_flow"` |
+| List recordings | `"list browser recordings"` |
+
+#### ⌨ Hotkey Daemon (`hotkey_daemon`)
+Global keyboard shortcuts (runs in background).
+| Hotkey | Action |
+|---|---|
+| `Win+Space` | Toggle voice listening |
+| `Win+S` | Describe screen |
+| `Win+B` | Morning briefing |
+| `Win+T` | Today's time |
+| `Win+P` | Quick status |
+| `Win+C` | System stats |
+
+List hotkeys: `"list hotkeys"`
+
+---
+
+### Knowledge & Research
+
+#### 🔍 Local RAG (`local_rag`)
+Index local files and answer questions from them using keyword-based retrieval + Ollama.
+Optionally uses `sentence-transformers` for semantic search.
+| Command | Example |
+|---|---|
+| Index file | `"index file C:/docs/manual.txt"` |
+| Index folder | `"index folder C:/Projects/docs"` |
+| Query | `"query my docs: what is the API rate limit?"` |
+| List indexed | `"list indexed documents"` |
+| Remove | `"remove from index manual.txt"` |
+
+Index stored at: `~/NexusScripts/rag_index.json`
+
+#### 🧬 JARVIS Memory v2 (`jarvis_memory_v2`)
+Semantic memory with importance scoring. Uses `sentence-transformers` if installed, falls back to Jaccard keyword similarity.
+| Command | Example |
+|---|---|
+| Remember | `"remember that John prefers meetings before noon"` |
+| Recall | `"recall what you know about John"` |
+| Get context | `"get context for client meeting"` |
+| List memories | `"list memories"` |
+| Consolidate | `"consolidate memories"` |
+| Stats | `"memory stats"` |
+
+**Categories:** `personal`, `preference`, `fact`, `event`, `goal`, `relationship`, `work`
+
+#### 🧠 Memory Brain (`memory`)
+Original memory system — contacts, preferences, tasks, facts.
+| Command | Example |
+|---|---|
+| Remember contact | `"remember John Smith phone 555-1234"` |
+| Find contact | `"find contact John"` |
+| Remember fact | `"remember my office WiFi password is nexus2024"` |
+| Add task | `"add task finish proposal by Friday"` |
+| List tasks | `"list my tasks"` |
+
+---
+
+### Fun & Creative
+
+#### 🌍 Language Coach (`language_coach`)
+AI language tutor via Ollama. Tracks progress in `~/NexusScripts/language_progress.json`.
+| Command | Example |
+|---|---|
+| Translate | `"translate 'good morning' to Japanese"` |
+| Learn vocab | `"learn Spanish vocabulary about food"` |
+| Practice conversation | `"practice French conversation at a restaurant"` |
+| Grammar check | `"grammar check this Spanish sentence: Yo soy un programador"` |
+| Daily lesson | `"daily Spanish lesson"` |
+| Quiz me | `"quiz me in French"` |
+
+#### 🌙 Dream Journal (`dream_journal`)
+Record and analyze dreams with Jungian psychology. Stored in `~/NexusScripts/dream_journal.json`.
+| Command | Example |
+|---|---|
+| Record dream | `"I had a dream I was flying over a city"` |
+| Analyze dream | `"analyze dream about flying"` |
+| List dreams | `"list my dreams"` |
+| Find themes | `"find dreams about water"` |
+| Stats | `"dream stats"` |
+
+#### ⬛ QR Generator (`qr_generator`)
+Generates QR codes as PNG files. Requires `pip install qrcode[pil]`.
+| Command | Example |
+|---|---|
+| Generate | `"generate QR code for https://mysite.com"` |
+| WiFi QR | `"WiFi QR code for MyNetwork password secret123"` |
+| Contact QR | `"contact QR for John Smith phone 555-1234 email john@example.com"` |
+| List QR codes | `"list QR codes"` |
+
+Saved to: `~/NexusScripts/qr_codes/`
+
+---
+
+### AI & System
+
+#### 🧠 LLM Router (`llm_router`)
+Smart model selection based on query type.
+| Profile | Model used for |
+|---|---|
+| fast | Quick questions, system info |
+| smart | Complex analysis, writing |
+| vision | Screen/image analysis |
+| cad | 3D part generation |
+
+| Command | Example |
+|---|---|
+| Switch model | `"switch to smart model"` |
+| List models | `"list models"` |
+| Router status | `"LLM router status"` |
+
+#### 🌤 Weather Eye (`weather_eye`)
+Local weather lookup via browser.
+`"get weather"` / `"weather in London"`
+
+#### 📡 Proactive Agent (`proactive`)
+Automated briefings and status checks.
+| Command | Example |
+|---|---|
+| Morning briefing | `"good morning"` |
+| End of day | `"good night"` |
+| Check urgent | `"what's urgent"` |
+| Quick status | `"nexus status"` |
+
+#### 📱 Web Remote (`web_remote`)
+Control Nexus from your phone browser.
+`"get phone URL"` — returns a local network URL to open on your phone.
+
+---
+
+### Documentation
+
+#### 📖 Auto Documenter (`auto_documenter`)
+Reads code files and generates Markdown documentation via Ollama.
+| Command | Example |
+|---|---|
+| Document folder | `"document project at C:/Projects/myapp"` |
+| Document file | `"document file C:/Projects/myapp/main.py"` |
+| Generate README | `"generate README for C:/Projects/myapp"` |
+| Summarize code | `"summarize code in C:/Projects/myapp/core"` |
+
+#### 🎙 Meeting Notes (`meeting_notes`)
+Records mic audio, transcribes with Whisper, summarizes with Ollama. Extracts action items.
+| Command | Example |
+|---|---|
+| Start meeting | `"start meeting Project Kickoff"` |
+| Stop meeting | `"stop meeting"` |
+| List meetings | `"list meetings"` |
+
+---
+
+### Monitoring
+
+#### 🔔 Uptime Monitor (`uptime_monitor`)
+Monitors website uptime and sends alerts.
+| Command | Example |
+|---|---|
+| Add site | `"monitor site mysite.com"` |
+| Check all | `"check uptime"` |
+| List sites | `"list monitored sites"` |
+
+#### 🔍 Website Auditor (`website_auditor`)
+Analyzes websites for performance, SEO, and broken links.
+`"audit site mysite.com"`
+
+#### 🔎 Lead Finder (`lead_finder`)
+Searches for potential business leads.
+`"find leads for software developers in London"`
+
+---
+
+## Configuration
+
+`config/settings.json` key sections:
+
+```json
+{
+  "ai": {
+    "model": "llama3.2:3b",
+    "ollama_host": "http://localhost:11434",
+    "temperature": 0.3
+  },
+  "voice": {
+    "whisper_model": "tiny",
+    "voice_rate": 155,
+    "voice_volume": 0.95,
+    "wake_word": true,
+    "sound_effects": true
+  },
+  "browser": {
+    "headless": false,
+    "slow_mo": 100
+  },
+  "smtp": {
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 587,
+    "smtp_user": "you@gmail.com",
+    "smtp_pass": "your_app_password"
+  }
+}
+```
+
+---
+
+## Data Storage
+
+All plugin data is stored locally in `~/NexusScripts/`:
+
+| File/Folder | Plugin |
+|---|---|
+| `expenses.json` | expense_tracker |
+| `contracts/` | contract_generator |
+| `email_drafts.json` | email_composer |
+| `competitors.json` | competitor_tracker |
+| `backup_config.json` | backup_manager |
+| `.vault` + `.vault_salt` | password_vault |
+| `pomodoro_log.json` | pomodoro |
+| `habits.json` | habit_tracker |
+| `calendar.json` | smart_calendar |
+| `recordings/` | screen_recorder, browser_recorder |
+| `language_progress.json` | language_coach |
+| `dream_journal.json` | dream_journal |
+| `qr_codes/` | qr_generator |
+| `rag_index.json` | local_rag |
+| `jarvis_memory_v2.json` | jarvis_memory_v2 |
+| `knowledge_base.json` | knowledge_base |
+| `research/` | research_agent |
+| `ambient_log.json` | ambient_monitor |
+| `focus_sessions.json` | focus_mode |
+| `time_log.json` | time_tracker |
+| `macros.json` | task_automator |
+| `print_queue.json` | print_queue |
+| `cad_parts/` | cad_engine |
+| `NexusScripts/` | code_writer |
+| `memory/` | memory_brain |
+
+---
+
+## Architecture
+
+```
+nexus/
+├── main.py                  # Entry point + wiring
+├── config/settings.json     # All configuration
+├── core/
+│   ├── assistant.py         # Ollama J.A.R.V.I.S. brain + fast routing
+│   ├── plugin_manager.py    # BasePlugin ABC + auto-discovery
+│   ├── browser_engine.py    # Playwright singleton
+│   └── scheduler.py         # APScheduler task runner
+├── ui/
+│   ├── app_window.py        # Main CustomTkinter window
+│   ├── chat_panel.py        # JARVIS chat UI with animations
+│   ├── sidebar.py           # Arc reactor HUD + quick actions
+│   ├── hud_canvas.py        # ArcReactor, ArcGauge, Waveform widgets
+│   └── theme.py             # JARVIS color palette
+└── plugins/
+    └── {plugin_name}/
+        └── plugin.py        # BasePlugin subclass (auto-discovered)
+```
+
+Each plugin implements:
+```python
+class MyPlugin(BasePlugin):
+    name = "my_plugin"
+    description = "..."
+    icon = "🔌"
+
+    async def connect(self) -> bool: ...
+    async def execute(self, action: str, params: dict) -> str: ...
+    def get_capabilities(self) -> list[dict]: ...
+```
+
+Plugins are auto-discovered — drop a folder with `plugin.py` into `plugins/` and restart.
+
+---
+
+## Version History
+
+| Version | Changes |
+|---|---|
+| v1.0 | Initial release — email, WhatsApp, Discord, GitHub, file manager |
+| v2.0 | Added CAD engine, code writer, task automator, vision AI, time tracker, proposal writer, client portal, browser recorder, hotkey daemon, LLM router, print queue, auto documenter, meeting notes |
+| v2.1 | JARVIS UI overhaul — ArcReactor HUD, ArcGauge system stats, JARVIS chat style, SoundFX, neural TTS voice |
+| v2.2 | +25 plugins: ambient monitor, focus mode, clipboard AI, app controller, research agent, news digest, knowledge base, PDF reader, expense tracker, contract generator, email composer, competitor tracker, system optimizer, backup manager, network scanner, password vault, pomodoro, habit tracker, smart calendar, screen recorder, language coach, dream journal, QR generator, local RAG, JARVIS memory v2 |

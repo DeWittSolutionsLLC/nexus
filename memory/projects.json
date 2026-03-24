@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "name": "Genoya",
+    "client": "Genoya",
+    "description": "",
+    "status": "planning",
+    "start_date": "2026-03-23",
+    "deadline": "2026-3-23",
+    "hourly_rate": 75.0,
+    "estimated_hours": 105.0,
+    "logged_hours": 0.0,
+    "technologies": [],
+    "notes": "",
+    "invoiced": false,
+    "paid": false,
+    "created": "2026-03-23T19:31:00.470986",
+    "time_log": []
+  }
+]

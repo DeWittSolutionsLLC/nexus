@@ -16,5 +16,41 @@
     "bot": "{\"type\": \"action\", \"plugin\": \"system_monitor\", \"action\": \"get_stats\", \"params\": {}, \"explanation\": \"CPU, RAM, disk usage overview, sir.\"}",
     "plugin": "system_monitor",
     "timestamp": "2026-03-22T22:34:58.196235"
+  },
+  {
+    "user": "Design a mounting bracket 80x60mm with 4 holes",
+    "bot": "{\"type\":\"multi_action\",\"steps\":[{\"plugin\":\"cad_engine\",\"action\":\"create_shape\",\"params\":{\"shape\":\"bracket\",\"name\":\"mounting_bracket\",\"width\":80,\"height\":60,\"depth\":10,\"radius\":0,\"holes\":4,\"fillet\":2,\"",
+    "plugin": "",
+    "timestamp": "2026-03-23T18:17:00.754822"
+  },
+  {
+    "user": "design a a mounting bracket 80x60mm with 4 holes",
+    "bot": "{\"type\":\"action\",\"plugin\":\"cad_engine\",\"action\":\"generate_part\",\"params\":{\"description\":\"Design a mounting bracket 80x60mm with 4 holes\",\"name\":\"mounting_bracket\",\"export\":true}}",
+    "plugin": "cad_engine",
+    "timestamp": "2026-03-23T18:19:02.497998"
+  },
+  {
+    "user": "design a mounting bracket 80x60mm with 4 holes",
+    "bot": "{\"type\":\"action\",\"plugin\":\"cad_engine\",\"action\":\"create_shape\",\"params\":{\"shape\":\"bracket\", \"name\":\"mounting_bracket\", \"width\":80,\"height\":60,\"depth\":10,\"radius\":2,\"holes\":4,\"hole_diameter\":8,\"fillet\"",
+    "plugin": "cad_engine",
+    "timestamp": "2026-03-23T18:24:32.819164"
+  },
+  {
+    "user": "open mounting_bracket",
+    "bot": "{\"type\":\"action\",\"plugin\":\"cad_engine\",\"action\":\"open_part\",\"params\":{\"name\":\"mounting_bracket\", \"format\":\"stl\"}}",
+    "plugin": "cad_engine",
+    "timestamp": "2026-03-23T18:26:45.120949"
+  },
+  {
+    "user": "what's on my screen?",
+    "bot": "ACTION:      {\"type\":\"action\",\"plugin\":\"screen\",\"action\":\"describe_screen\",\"params\":{},\"explanation\":\"Describe what's currently visible on screen.\"}",
+    "plugin": "screen",
+    "timestamp": "2026-03-23T19:31:00.449516"
+  },
+  {
+    "user": "open slicer",
+    "bot": "{\"type\":\"action\",\"plugin\":\"print_queue\",\"action\":\"open_slicer\",\"params\":{\"path\":\"\"}}",
+    "plugin": "print_queue",
+    "timestamp": "2026-03-23T19:33:51.031436"
   }
 ]
