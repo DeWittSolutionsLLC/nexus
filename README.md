@@ -673,6 +673,293 @@ All AI/ML improvement tasks are tracked in the **RESEARCH tab** and **Tasks** sy
 
 ---
 
+## ML User Guide — AI/ML Improvement Tracking
+
+Nexus includes a comprehensive **ML tab** for tracking and managing AI/ML improvement initiatives. Access it by clicking the "ML" tab in the main interface.
+
+### ML Tab Overview
+
+The ML tab consists of four main sections:
+
+#### 📋 Tasks Tab
+**Manage your AI/ML improvement tasks and track progress.**
+
+**Viewing Tasks:**
+- **All Tasks**: See all ML-related tasks with status indicators
+- **Filter by Status**: Open, In Progress, Done
+- **Filter by Priority**: Low, Medium, High
+- **Filter by Category**: ai_ml, evolution, memory, research, optimization
+
+**Task Management:**
+- **Mark Complete**: Click the checkbox next to any task
+- **Start Task**: Click "Start" to mark as in progress
+- **Edit Task**: Click the edit icon to modify task details
+- **Create New Task**: Use the "Create Task" button
+
+**Task Categories:**
+- `ai_ml`: Core AI/ML algorithm and model improvements
+- `evolution`: Code refactoring and system optimization
+- `memory`: Knowledge base and memory consolidation
+- `research`: Academic research and paper reviews
+- `optimization`: Performance tuning and hyperparameter optimization
+
+#### 📊 Progress Tab
+**Visual dashboard showing your AI/ML improvement progress over time.**
+
+**Charts & Visualizations:**
+- **Model Performance Chart**: Track accuracy, F1 scores, and other metrics over time
+- **Code Quality Chart**: Monitor refactoring impact and performance improvements
+- **Research Activity Chart**: See research engagement and paper reviews
+- **Memory Optimization Chart**: Track knowledge base consolidation progress
+
+**Learning Integration:**
+- **Recent Model Improvements**: Latest algorithm enhancements and their impact
+- **Code Quality Updates**: Recent refactoring and optimization work
+- **Research Activities**: Papers reviewed, conferences attended, new techniques learned
+- **Memory Consolidations**: Duplicate removal and knowledge base improvements
+
+#### 🔬 Research Tab
+**Research recommendations and AI/ML learning resources.**
+
+**Research Recommendations:**
+- **Gap Analysis**: Identifies missing research areas in your improvement program
+- **Priority Suggestions**: High-priority research topics based on current tasks
+- **Action Items**: Click "Create Task" to add recommended research to your task list
+
+**Current Research Areas:**
+- **Algorithm Exploration**: New ML algorithms and techniques
+- **Hyperparameter Tuning**: Systematic optimization strategies
+- **Research Program**: Establishing regular paper review and conference attendance
+
+**Research Framework:**
+- **Weekly Reviews**: arXiv, NeurIPS, ICML, IJCAI papers
+- **Conference Tracking**: Major AI/ML conference proceedings
+- **Implementation**: Practical applications of research findings
+
+#### 📈 Metrics Tab
+**Comprehensive metrics dashboard for measuring AI/ML improvement success.**
+
+**Time Period Filters:**
+- **Week**: Last 7 days of activity
+- **Month**: Last 30 days of progress
+- **Quarter**: Last 90 days of improvement
+
+**Performance Metrics:**
+- **Model Improvements**: Number of enhancements, average improvement percentage
+- **Code Quality**: Refactoring count, performance impact measurements
+- **Research Activities**: Papers reviewed, topics covered, research diversity
+- **Memory Optimization**: Duplicates removed, consolidation activities
+
+**Success Tracking:**
+- **Quantitative Metrics**: Accuracy %, performance gains, complexity reduction
+- **Qualitative Metrics**: Research depth, code clarity improvements
+- **Trend Analysis**: Progress over time with visual indicators
+
+### Using the ML System
+
+#### Getting Started
+1. **Launch Nexus**: Run `python main.py`
+2. **Navigate to ML Tab**: Click the "ML" tab in the main interface
+3. **Initial Setup**: The system automatically generates routine improvement tasks
+4. **Explore Tabs**: Review each tab to understand your current status
+5. **Manual Execution**: Work on tasks manually and mark them complete when finished
+
+#### Daily Workflow
+1. **Morning Review**: Check the Progress tab for recent improvements
+2. **Task Management**: Review and update task statuses in the Tasks tab
+3. **Research Check**: Look at Research tab for new recommendations
+4. **Execute Tasks**: Manually work on high-priority tasks (research, coding, optimization)
+5. **Mark Complete**: Update task status when finished with manual work
+
+#### Weekly Routine
+1. **Research Review**: Manually dedicate time to paper reviews and new techniques
+2. **Code Audit**: Manually review codebase for optimization opportunities
+3. **Memory Consolidation**: Manually clean up knowledge base and remove duplicates
+4. **Progress Assessment**: Evaluate improvement metrics and adjust goals
+5. **Task Updates**: Mark completed tasks and plan next week's priorities
+
+#### Automated Features
+- **Auto-Refresh**: ML tab updates every 30 seconds with latest data
+- **Task Generation**: System creates routine improvement tasks automatically on startup
+- **Progress Tracking**: All improvements are logged and visualized when tasks are completed
+- **Research Recommendations**: AI suggests new areas to explore based on current task gaps
+
+**Important Note**: The ML system tracks and recommends improvements, but does NOT automatically execute tasks. You must manually work on the tasks (research papers, refactor code, optimize memory, etc.) and mark them complete in the interface.
+
+### What the System Does Automatically
+
+✅ **Generates routine tasks** (weekly research reviews, code audits, memory consolidation)  
+✅ **Tracks your progress** when you complete tasks manually  
+✅ **Updates charts and metrics** in real-time  
+✅ **Suggests research areas** based on gaps in your improvement program  
+✅ **Logs improvements** from other plugins (learning_progress, research_agent, etc.)  
+
+### What You Need to Do Manually
+
+🔄 **Execute the tasks** (read papers, refactor code, consolidate knowledge)  
+🔄 **Mark tasks complete** when finished  
+🔄 **Review recommendations** and create new tasks as needed  
+🔄 **Monitor progress** and adjust priorities regularly
+
+---
+
+## Autonomous ML Improvement System (Future Enhancement)
+
+**Note**: The current ML system is a **tracking and guidance tool**. True autonomous execution of ML improvement tasks would require advanced AI capabilities and carries significant risks. Below is a roadmap for future autonomous features:
+
+### Phase 1: Semi-Autonomous Research
+- **Automated Paper Discovery**: Scan arXiv daily for relevant papers
+- **Summary Generation**: Auto-summarize papers and extract key insights
+- **Relevance Scoring**: Rate papers by applicability to current projects
+- **Weekly Digest**: Email summaries of top papers
+
+### Phase 2: Code Analysis Automation
+- **Automated Code Scanning**: Daily codebase analysis for optimization opportunities
+- **Performance Profiling**: Identify bottlenecks automatically
+- **Refactoring Suggestions**: Generate specific improvement recommendations
+- **Safe Application**: Apply low-risk optimizations automatically
+
+### Phase 3: Memory Optimization
+- **Automated Consolidation**: Weekly knowledge base cleanup
+- **Duplicate Detection**: Find and merge similar entries
+- **Importance Scoring**: Automatically prioritize memory retention
+- **Archive Management**: Move old data to compressed storage
+
+### Phase 4: Model Improvement Automation
+- **Automated Experiments**: Run hyperparameter sweeps overnight
+- **Performance Monitoring**: Track model metrics continuously
+- **Data Augmentation**: Generate synthetic training data
+- **Model Updates**: Deploy improved models automatically
+
+### Safety Considerations
+- **Human Oversight**: All automated changes require approval
+- **Rollback Capability**: Easy reversion of any automated changes
+- **Testing Frameworks**: Comprehensive validation before deployment
+- **Risk Assessment**: Automated evaluation of change impact
+
+### Current Limitations
+- **Code Safety**: Automated refactoring could introduce bugs
+- **Research Quality**: AI summarization may miss nuanced insights
+- **Context Understanding**: Limited ability to understand complex codebases
+- **Ethical Concerns**: Automated decisions may have unintended consequences
+
+**The current system focuses on guidance and tracking rather than autonomous execution to ensure safety and quality.**
+
+### Near-Term Automation Opportunities
+
+While full autonomy is complex, here are some **feasible semi-automated features** that could be implemented:
+
+#### 🤖 Automated Research Assistant
+- **Daily Paper Scanning**: Automatically check arXiv for papers matching your interests
+- **Smart Summaries**: Generate AI summaries of papers with key takeaways
+- **Relevance Ranking**: Score papers by how applicable they are to your current projects
+- **Weekly Reports**: Email digests of the most relevant research
+
+#### 🔍 Code Quality Monitor
+- **Automated Code Analysis**: Run static analysis tools daily
+- **Performance Profiling**: Identify potential bottlenecks automatically
+- **Best Practice Checks**: Flag code that doesn't follow ML best practices
+- **Refactoring Suggestions**: Generate specific improvement recommendations
+
+#### 📊 Automated Reporting
+- **Weekly Progress Reports**: Auto-generate summaries of your ML improvements
+- **Benchmark Comparisons**: Compare your progress against industry standards
+- **Goal Tracking**: Monitor progress toward long-term improvement objectives
+- **Predictive Analytics**: Forecast future improvement trajectories
+
+#### 💾 Smart Memory Management
+- **Automated Cleanup**: Remove outdated or redundant information
+- **Importance Scoring**: Automatically prioritize what to keep vs archive
+- **Cross-Referencing**: Find and link related pieces of information
+- **Usage Analytics**: Track which knowledge gets used most frequently
+
+These semi-automated features would enhance productivity while maintaining human oversight and decision-making.
+
+### ML Task Examples
+
+**Research Tasks:**
+- "Review latest NeurIPS papers on transformer architectures"
+- "Implement SHAP explainability for current models"
+- "Explore reinforcement learning for optimization problems"
+
+**Code Evolution Tasks:**
+- "Refactor authentication module for better performance"
+- "Implement early stopping in training loops"
+- "Add comprehensive error handling to API endpoints"
+
+**Memory Optimization Tasks:**
+- "Consolidate duplicate knowledge base entries"
+- "Archive old interaction logs"
+- "Optimize database indexes for better query performance"
+
+**Model Optimization Tasks:**
+- "Implement hyperparameter tuning pipeline"
+- "Add cross-validation to model evaluation"
+- "Fine-tune pre-trained models for specific use cases"
+
+### Integration with Other Systems
+
+**Learning Progress Plugin:**
+- Automatically tracks all improvements and research activities
+- Provides data for progress charts and metrics
+- Stores detailed improvement logs with timestamps
+
+**Task System:**
+- All ML tasks integrate with the main task management system
+- Supports priority levels, due dates, and categorization
+- Enables cross-referencing with other project tasks
+
+**Research Agent:**
+- Use `"research [topic]"` commands to trigger deep research
+- Findings automatically logged in the research tracking system
+- Research reports saved for future reference
+
+### Best Practices
+
+**Consistent Tracking:**
+- Mark tasks complete immediately when finished
+- Log all research activities and findings
+- Record performance metrics before and after improvements
+
+**Regular Reviews:**
+- Weekly: Review progress charts and adjust priorities
+- Monthly: Deep dive into metrics and long-term trends
+- Quarterly: Assess overall improvement strategy
+
+**Quality Over Quantity:**
+- Focus on meaningful improvements rather than busy work
+- Prioritize high-impact changes that provide measurable benefits
+- Document lessons learned from both successes and failures
+
+**Research Integration:**
+- Balance theoretical research with practical implementation
+- Apply research findings to real problems
+- Track which research leads to actual improvements
+
+### Troubleshooting
+
+**Charts Not Loading:**
+- Ensure matplotlib is installed: `pip install matplotlib>=3.8.0`
+- Check that the learning_progress plugin is loaded
+- Verify data exists in the progress tracking files
+
+**Tasks Not Updating:**
+- Check that tasks.json file is writable
+- Ensure proper JSON formatting in task files
+- Try refreshing the ML tab manually
+
+**Research Recommendations Not Appearing:**
+- Verify research framework data is available
+- Check that current tasks are properly categorized
+- Ensure the AI model (Ollama) is running for recommendations
+
+**Performance Issues:**
+- ML tab auto-refreshes every 30 seconds
+- Close the tab when not in use to reduce system load
+- Consider increasing refresh interval in settings if needed
+
+---
+
 ## AI & System
 
 #### 🧠 LLM Router (`llm_router`)

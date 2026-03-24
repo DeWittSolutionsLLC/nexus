@@ -196,13 +196,23 @@ def main():
     from core.scheduler import TaskScheduler
     scheduler = TaskScheduler(config.get("scheduler", {}), plugin_manager)
 
+    # Schedule autonomous ML learning (learn from experience every 30 minutes)
+    scheduler.add_task(
+        name="autonomous_ml_learning",
+        cron="*/30 * * * *",  # Every 30 minutes
+        actions=[{
+            "plugin": "autonomous_ml",
+            "action": "learn_from_experience",
+            "params": {}
+        }]
+    )
+
     # -- Proactive Observer (Feature 3) --
     _start_observer(plugin_manager)
 
     # -- Launch UI --
     from ui.app_window import AppWindow
     app = AppWindow(plugin_manager, assistant, scheduler, browser_engine)
-
     app.run()
 
 

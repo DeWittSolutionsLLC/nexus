@@ -53,8 +53,12 @@
     "title": "[AI/ML] Research Latest ML Papers & Conferences",
     "due": "Weekly",
     "priority": "high",
-    "tags": ["ai_ml", "research", "self-improvement"],
-    "status": "open",
+    "tags": [
+      "ai_ml",
+      "research",
+      "self-improvement"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Review papers from NIPS, ICML, NeurIPS. Check arXiv for latest advancements."
   },
@@ -63,8 +67,12 @@
     "title": "[AI/ML] Hyperparameter Tuning - Current Models",
     "due": "This Week",
     "priority": "high",
-    "tags": ["ai_ml", "optimization", "model-improvement"],
-    "status": "open",
+    "tags": [
+      "ai_ml",
+      "optimization",
+      "model-improvement"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Apply grid search and Bayesian optimization to improve model performance metrics."
   },
@@ -73,8 +81,12 @@
     "title": "[AI/ML] Implement Explainability (SHAP/LIME)",
     "due": "Next Week",
     "priority": "high",
-    "tags": ["ai_ml", "explainability", "transparency"],
-    "status": "open",
+    "tags": [
+      "ai_ml",
+      "explainability",
+      "transparency"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Integrate SHAP and LIME to understand model decisions and identify biases."
   },
@@ -83,8 +95,12 @@
     "title": "[AI/ML] Data Augmentation Pipeline",
     "due": "2 Weeks",
     "priority": "medium",
-    "tags": ["ai_ml", "data", "training"],
-    "status": "open",
+    "tags": [
+      "ai_ml",
+      "data",
+      "training"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Set up augmentation (rotation, flipping, mixup) and explore GANs for synthetic data."
   },
@@ -93,8 +109,12 @@
     "title": "[Evolution] Weekly Code Reflection",
     "due": "Every Friday",
     "priority": "medium",
-    "tags": ["evolution", "code-quality", "refactoring"],
-    "status": "open",
+    "tags": [
+      "evolution",
+      "code-quality",
+      "refactoring"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Review codebase for optimization opportunities, DRY violations, and performance bottlenecks."
   },
@@ -103,8 +123,12 @@
     "title": "[Memory] Monthly Knowledge Base Consolidation",
     "due": "Last Friday of Month",
     "priority": "medium",
-    "tags": ["memory", "maintenance", "optimization"],
-    "status": "open",
+    "tags": [
+      "memory",
+      "maintenance",
+      "optimization"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Remove duplicate entries, consolidate similar information, improve categorization."
   },
@@ -113,8 +137,12 @@
     "title": "[AI/ML] Transfer Learning - Fine-tune Pre-trained Models",
     "due": "2 Weeks",
     "priority": "medium",
-    "tags": ["ai_ml", "transfer-learning", "optimization"],
-    "status": "open",
+    "tags": [
+      "ai_ml",
+      "transfer-learning",
+      "optimization"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Identify pre-trained models suitable for domain, fine-tune for specific tasks."
   },
@@ -123,8 +151,12 @@
     "title": "[AI/ML] Explore ML Algorithms (Supervised/Unsupervised/RL)",
     "due": "Monthly",
     "priority": "medium",
-    "tags": ["ai_ml", "research", "algorithms"],
-    "status": "open",
+    "tags": [
+      "ai_ml",
+      "research",
+      "algorithms"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Investigate different algorithm classes, analyze strengths/weaknesses, document applications."
   },
@@ -133,8 +165,12 @@
     "title": "[Evolution] Code Refactoring - Performance Improvements",
     "due": "As Needed",
     "priority": "low",
-    "tags": ["evolution", "refactoring", "performance"],
-    "status": "open",
+    "tags": [
+      "evolution",
+      "refactoring",
+      "performance"
+    ],
+    "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Apply refactors incrementally, monitor performance impact, document learnings."
   }

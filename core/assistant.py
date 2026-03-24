@@ -251,6 +251,11 @@ EVOLUTION & SELF-IMPROVEMENT ROUTING:
 - "Apply the refactors" / "Yes apply them" / "Go ahead with the refactors": evolution_engine→apply_refactors
 - "Skip the refactors" / "No don't apply" / "Leave the code alone": evolution_engine→skip_refactors
 - "Reorganise your thoughts" / "Sleep cycle" / "Consolidate memories" / "Clean up memories": jarvis_memory_v2→sleep_cycle
+- "Analyze system" / "Analyze yourself" / "System analysis": self_improver→analyze_system
+- "Create improvement plan" / "Plan improvements": self_improver→create_improvement_plan
+- "Execute phase" / "Run phase 1": self_improver→execute_phase
+- "Validate improvements" / "Check impact": self_improver→validate_improvements
+- "Auto improve" / "Self improve" / "Autonomous improvement" / "Nexus improve yourself": self_improver→auto_improve
 """
 
 # Keywords that hint the user is pointing at something on-screen (Feature 4)
@@ -433,6 +438,19 @@ class Assistant:
         ({"monthly learning", "monthly report", "this month progress"},    "learning_progress","get_monthly_report", {}),
         ({"milestones", "my milestones", "learning milestones"},           "learning_progress","get_all_milestones", {}),
         ({"improvement areas", "focus areas", "what to focus on"},         "learning_progress","get_improvement_areas", {}),
+        # Autonomous ML (Reinforcement Learning)
+        ({"analyze learning", "learning analysis", "ml performance"},      "autonomous_ml",   "analyze_performance", {}),
+        ({"learn from experience", "process learning", "update policy"},   "autonomous_ml",   "learn_from_experience", {}),
+        ({"reset autonomous learning", "reset ml", "clear learning"},      "autonomous_ml",   "reset_learning",     {}),
+        # Self-Improver (Autonomous Improvement Orchestrator)
+        ({"analyze system", "analyze yourself", "system analysis"},         "self_improver",   "analyze_system",      {}),
+        ({"create improvement plan", "plan improvements", "improvement plan"},  "self_improver", "create_improvement_plan", {}),
+        ({"execute phase", "run phase 1", "run phase 2", "run phase 3"},   "self_improver",   "execute_phase",       {"phase_number": 1}),
+        ({"validate improvements", "validate changes", "check impact"},     "self_improver",   "validate_improvements", {}),
+        ({"get improvement plan", "current plan", "what's the plan"},       "self_improver",   "get_plan",            {}),
+        ({"auto improve", "self improve", "autonomous improvement",
+          "improve yourself", "optimize yourself", "nexus auto improve",
+          "nexus improve yourself"},                                        "self_improver",   "auto_improve",        {"focus_area": "general"}),
     ]
 
     def _fast_route(self, message: str) -> dict | None:
@@ -536,6 +554,9 @@ class Assistant:
                 plugin_used = parsed.get("plugin", "")
                 self.memory_brain.log_interaction(user_message, reply_text[:200], plugin_used)
 
+            # Log interaction for autonomous ML learning
+            self._log_interaction_for_ml(user_message, reply_text, parsed, capabilities)
+
             return parsed
 
         except Exception as e:
@@ -588,6 +609,46 @@ class Assistant:
                 params = ", ".join(cap.get("params", []))
                 lines.append(f"  {cap['action']}: {cap['description']} | params: {params}")
         return "\n".join(lines)
+
+    def _log_interaction_for_ml(self, user_input: str, ai_response: str, parsed_response: dict, capabilities: dict):
+        """Log interaction for autonomous ML learning."""
+        try:
+            # Get autonomous ML plugin
+            if not self.plugin_manager:
+                return
+
+            autonomous_ml = self.plugin_manager.get_plugin("autonomous_ml")
+            if not autonomous_ml or not autonomous_ml.is_connected:
+                return
+
+            # Extract success score from response type
+            success_score = 0.5  # neutral default
+            if parsed_response.get("type") == "action":
+                success_score = 0.8  # actions are generally successful
+            elif parsed_response.get("type") == "multi_action":
+                success_score = 0.9  # multi-actions are very successful
+            elif "error" in ai_response.lower() or "failed" in ai_response.lower():
+                success_score = 0.2  # errors reduce success score
+
+            # Get conversation context
+            conversation_length = len(self.conversation_history) if self.conversation_history else 0
+
+            # Log the interaction
+            autonomous_ml.execute("log_interaction", {
+                "user_input": user_input,
+                "ai_response": ai_response,
+                "user_feedback": 0,  # No explicit feedback yet
+                "success_score": success_score,
+                "context": {
+                    "conversation_length": conversation_length,
+                    "active_plugin": parsed_response.get("plugin", ""),
+                    "response_type": parsed_response.get("type", ""),
+                    "capabilities_count": sum(len(caps) for caps in capabilities.values())
+                }
+            })
+        except Exception as e:
+            # Don't let ML logging break the main flow
+            logger.debug(f"ML interaction logging failed: {e}")
 
     def _offline_response(self, message: str) -> dict:
         """Keyword-based routing when Ollama isn't available."""

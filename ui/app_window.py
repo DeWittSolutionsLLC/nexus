@@ -1,6 +1,7 @@
 """App Window — JARVIS-style AI Command Center with tabs and live HUD."""
 
 import asyncio
+import queue
 import threading
 import logging
 from datetime import datetime
@@ -22,6 +23,7 @@ class AppWindow:
 
         self.loop = asyncio.new_event_loop()
         self._loop_thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._ui_queue: queue.SimpleQueue = queue.SimpleQueue()
         # Expose loop on assistant so web_remote can find it
         if assistant:
             assistant._remote_loop = self.loop
@@ -1378,19 +1380,23 @@ class AppWindow:
         ]
         for delay, msg in boot_seq:
             await asyncio.sleep(delay)
-            self.root.after(0, lambda m=msg: self.chat.add_system_message(m))
+            self._ui_call(lambda m=msg: self.chat.add_system_message(m))
 
         try:
-            await self.browser_engine.start()
-            self.root.after(0, lambda: self.chat.add_system_message(
+            await asyncio.wait_for(self.browser_engine.start(), timeout=30)
+            self._ui_call(lambda: self.chat.add_system_message(
                 "Browser context established.                    [ 60%]  ✓"
             ))
+        except asyncio.TimeoutError:
+            self._ui_call(lambda: self.chat.add_system_message(
+                "Browser timed out — browser plugins unavailable, continuing..."
+            ))
         except Exception as e:
-            self.root.after(0, lambda: self.chat.add_system_message(
+            self._ui_call(lambda: self.chat.add_system_message(
                 f"Browser warning: {str(e)[:50]}  — continuing..."
             ))
 
-        self.root.after(0, lambda: self.chat.add_system_message(
+        self._ui_call(lambda: self.chat.add_system_message(
             "Connecting all subsystems...                    [ 70%]"
         ))
         total = len(self.plugin_manager.plugins)
@@ -1398,35 +1404,36 @@ class AppWindow:
 
         def _on_plugin():
             connected_so_far[0] += 1
-            pct = 70 + int(connected_so_far[0] / max(total, 1) * 28)
-            self.root.after(0, self.sidebar.update_status)
+            self._ui_call(self.sidebar.update_status)
 
         await self.plugin_manager.connect_all(on_plugin_connected=_on_plugin)
 
         # Wire evolution_engine with the full plugin_manager + ai config
         evo = self.plugin_manager.get_plugin("evolution_engine")
         if evo and hasattr(evo, "set_plugin_manager"):
-            # Pass the assistant's ai config so EvolutionEngine uses the same model
             evo.config.update(self.assistant.config)
             evo.set_plugin_manager(self.plugin_manager)
 
         plugin_count = sum(1 for p in self.plugin_manager.plugins.values() if p.is_connected)
-        self.root.after(0, lambda: self.chat.add_system_message(
+        self._ui_call(lambda: self.chat.add_system_message(
             f"Subsystems online: {plugin_count}/{total}              [ 98%]  ✓"
         ))
         await asyncio.sleep(0.1)
-        self.root.after(0, lambda: self.chat.add_system_message(
+        self._ui_call(lambda: self.chat.add_system_message(
             "All systems nominal.                            [100%]  ✓"
         ))
 
-        self.root.after(0, self.sidebar.update_status)
-        self.root.after(0, self._wire_voice)
-        self.root.after(0, self._update_status_dot)
-        self.root.after(0, self._post_boot_message)
-        self.root.after(500, self._refresh_system_stats)
-        self.root.after(1000, self._refresh_projects)
-        self.root.after(1500, self._refresh_uptime_display)
-        self.root.after(2000, self._refresh_ml)
+        self._ui_call(self.sidebar.update_status)
+        self._ui_call(self._wire_voice)
+        self._ui_call(self._update_status_dot)
+        self._ui_call(self._post_boot_message)
+        self._ui_call(self._refresh_system_stats, delay_ms=500)
+        self._ui_call(self._refresh_projects, delay_ms=1000)
+        self._ui_call(self._refresh_uptime_display, delay_ms=1500)
+        self._ui_call(self._refresh_ml, delay_ms=2000)
+
+        # Start the scheduler now that the event loop is running
+        asyncio.create_task(self.scheduler.start())
 
         self._set_status(f"All systems online — {plugin_count} plugins active")
 
@@ -1901,12 +1908,33 @@ class AppWindow:
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
+    def _ui_call(self, fn, delay_ms: int = 0):
+        """Thread-safe: schedule fn on the main Tk thread (safe from any thread)."""
+        if delay_ms == 0:
+            self._ui_queue.put(fn)
+        else:
+            self._ui_queue.put(lambda: self.root.after(delay_ms, fn))
+
+    def _drain_ui_queue(self):
+        """Main-thread poller — drains pending UI callbacks ~60 fps."""
+        try:
+            while True:
+                fn = self._ui_queue.get_nowait()
+                fn()
+        except queue.Empty:
+            pass
+        self.root.after(16, self._drain_ui_queue)
+
     def _update_chat(self, msg: str):
-        self.root.after(0, lambda: self.chat.add_bot_message(msg))
+        self._ui_call(lambda: self.chat.add_bot_message(msg))
 
     def run(self):
         self._loop_thread.start()
-        self.sidebar.update_status()
+        try:
+            self.sidebar.update_status()
+        except Exception as e:
+            logger.error(f"sidebar.update_status failed: {e}")
+        self.root.after(0, self._drain_ui_queue)   # start queue drain on main thread
         asyncio.run_coroutine_threadsafe(self._startup(), self.loop)
         self.root.mainloop()
 
@@ -1994,9 +2022,10 @@ class AppWindow:
         self._build_ml_research_tab()
         self._build_ml_metrics_tab()
 
-        # Auto-refresh timer
+        # Auto-refresh timer — deferred so it runs after mainloop starts,
+        # avoiding a blocking matplotlib font-cache scan during __init__
         self.ml_auto_refresh_id = None
-        self._start_ml_auto_refresh()
+        self.root.after(500, self._start_ml_auto_refresh)
 
     def _build_ml_tasks_tab(self):
         """Build the tasks view with completion functionality."""
@@ -2443,6 +2472,7 @@ class AppWindow:
             canvas = FigureCanvasTkAgg(fig, master=self.ml_progress_scroll)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True, padx=SPACING["md"], pady=SPACING["md"])
+            plt.close(fig)  # Release matplotlib's reference to avoid memory leak
 
         except ImportError:
             ctk.CTkLabel(
