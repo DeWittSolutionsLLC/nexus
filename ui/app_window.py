@@ -405,10 +405,11 @@ class AppWindow:
             self.chat.set_processing(False),
             self.chat.add_bot_message(message, animated=animated),
         ))
-        if speak and self.voice_engine:
+        if self.voice_engine:
+            tts_text = speak if speak else message[:600]
             self.root.after(0, self.chat.show_waveform)
             def _speak_and_hide():
-                self.voice_engine.speak(speak)
+                self.voice_engine.speak(tts_text)
                 self.root.after(0, self.chat.hide_waveform)
             threading.Thread(target=_speak_and_hide, daemon=True).start()
 
