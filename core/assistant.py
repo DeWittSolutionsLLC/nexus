@@ -633,8 +633,9 @@ class Assistant:
             # Get conversation context
             conversation_length = len(self.conversation_history) if self.conversation_history else 0
 
-            # Log the interaction
-            autonomous_ml.execute("log_interaction", {
+            # Log the interaction (fire-and-forget — don't block the response)
+            import asyncio
+            asyncio.ensure_future(autonomous_ml.execute("log_interaction", {
                 "user_input": user_input,
                 "ai_response": ai_response,
                 "user_feedback": 0,  # No explicit feedback yet
@@ -645,7 +646,7 @@ class Assistant:
                     "response_type": parsed_response.get("type", ""),
                     "capabilities_count": sum(len(caps) for caps in capabilities.values())
                 }
-            })
+            }))
         except Exception as e:
             # Don't let ML logging break the main flow
             logger.debug(f"ML interaction logging failed: {e}")

@@ -146,6 +146,17 @@ class EvolutionEngine:
         class_name  = "".join(w.capitalize() for w in plugin_name.split("_"))
         note(f"  Proposed identifier: '{plugin_name}'")
 
+        # Guard: never regenerate a plugin that is already installed and live
+        target = PLUGINS_DIR / plugin_name
+        existing = self.plugin_manager.get_plugin(plugin_name)
+        if target.exists() and existing and existing.is_connected:
+            note(
+                f"  '{plugin_name}' is already installed and connected, sir.\n"
+                f"  I will not overwrite a functional plugin with a generated replacement.\n"
+                f"  If you want to regenerate it, remove plugins/{plugin_name}/ manually first."
+            )
+            return "\n".join(log)
+
         # Research via research_agent (best-effort)
         research = "No external research available."
         rp = self.plugin_manager.get_plugin("research_agent")
@@ -196,9 +207,17 @@ class EvolutionEngine:
 
         note("  Syntax check passed. Promoting to plugins/ directory...")
 
-        # Promote
+        # Promote — final safety check before touching plugins/
         target = PLUGINS_DIR / plugin_name
         if target.exists():
+            live = self.plugin_manager.get_plugin(plugin_name)
+            if live and live.is_connected:
+                note(
+                    f"  Generated code passed validation, but '{plugin_name}' is already\n"
+                    f"  live and connected — leaving the installed version untouched, sir.\n"
+                    f"  The generated code is preserved in staging/{plugin_name}/ for review."
+                )
+                return "\n".join(log)
             shutil.rmtree(target)
         shutil.copytree(str(staging_dir), str(target))
 

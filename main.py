@@ -156,7 +156,7 @@ def main():
 
     # -- Wire plugins that need plugin_manager reference --
     for pm_name in ("proactive", "task_automator", "time_tracker", "meeting_notes",
-                    "client_portal", "evolution_engine"):
+                    "client_portal", "evolution_engine", "self_improver"):
         p = plugin_manager.get_plugin(pm_name)
         if p and hasattr(p, "set_plugin_manager"):
             p.set_plugin_manager(plugin_manager)
@@ -196,16 +196,32 @@ def main():
     from core.scheduler import TaskScheduler
     scheduler = TaskScheduler(config.get("scheduler", {}), plugin_manager)
 
-    # Schedule autonomous ML learning (learn from experience every 30 minutes)
+    # Autonomous ML: learn from experience every 30 minutes
     scheduler.add_task(
         name="autonomous_ml_learning",
-        cron="*/30 * * * *",  # Every 30 minutes
-        actions=[{
-            "plugin": "autonomous_ml",
-            "action": "learn_from_experience",
-            "params": {}
-        }]
+        cron="*/30 * * * *",
+        actions=[{"plugin": "autonomous_ml", "action": "learn_from_experience", "params": {}}]
     )
+
+    # Knowledge base: consolidate + optimize every 6 hours
+    scheduler.add_task(
+        name="kb_maintenance",
+        cron="0 */6 * * *",
+        actions=[
+            {"plugin": "consolidate_optimize_knowledge_base", "action": "consolidate", "params": {}},
+            {"plugin": "consolidate_optimize_knowledge_base", "action": "optimize",    "params": {}},
+        ]
+    )
+
+    # Self-improvement cycle every night at 2 AM
+    scheduler.add_task(
+        name="nightly_self_improve",
+        cron="0 2 * * *",
+        actions=[{"plugin": "self_improver", "action": "auto_improve", "params": {"focus_area": "general"}}]
+    )
+
+    # -- Start scheduler (autonomous ML learning, cron tasks) --
+    scheduler.start()
 
     # -- Proactive Observer (Feature 3) --
     _start_observer(plugin_manager)

@@ -13,9 +13,11 @@ Features:
   6. Learn from results (feedback to autonomous_ml)
 """
 
+import ast
 import json
 import logging
 import asyncio
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from core.plugin_manager import BasePlugin
@@ -98,6 +100,26 @@ class SelfImproverPlugin(BasePlugin):
                 "description": "Run the full autonomous improvement cycle (research→plan→implement)",
                 "params": ["focus_area"]
             },
+            {
+                "action": "find_dry_violations",
+                "description": "Scan plugins/ for repeated code patterns and duplicate function bodies",
+                "params": []
+            },
+            {
+                "action": "find_performance_bottlenecks",
+                "description": "Scan codebase for common async/performance anti-patterns",
+                "params": []
+            },
+            {
+                "action": "consolidate_memory",
+                "description": "Deduplicate and consolidate interaction_log.json and tasks.json",
+                "params": []
+            },
+            {
+                "action": "categorize_knowledge",
+                "description": "Standardise and group tags in knowledge base JSON files",
+                "params": []
+            },
         ]
 
     async def execute(self, action: str, params: dict) -> str:
@@ -121,6 +143,14 @@ class SelfImproverPlugin(BasePlugin):
                 return await self._get_plan()
             elif action == "auto_improve":
                 return await self._auto_improve_cycle(params.get("focus_area", "general"))
+            elif action == "find_dry_violations":
+                return self._find_dry_violations()
+            elif action == "find_performance_bottlenecks":
+                return self._find_performance_bottlenecks()
+            elif action == "consolidate_memory":
+                return self._consolidate_memory()
+            elif action == "categorize_knowledge":
+                return self._categorize_knowledge()
             else:
                 return f"Unknown action: {action}"
         except Exception as e:
@@ -249,6 +279,23 @@ class SelfImproverPlugin(BasePlugin):
                 "risk": 2,
                 "priority": 7 / (5 + 1)
             },
+        ]
+
+        # Filter out plugin-type entries that are already installed and live
+        installed = set(self.plugin_manager.plugins.keys()) if self.plugin_manager else set()
+
+        def _plugin_name_from(description: str) -> str:
+            import re
+            stop = {"a", "an", "the", "for", "that", "which", "with", "and",
+                    "or", "to", "of", "in", "plugin", "me", "build", "create",
+                    "make", "write", "new", "i", "need", "want"}
+            words = re.findall(r"[a-zA-Z]+", description.lower())
+            words = [w for w in words if w not in stop][:4]
+            return "_".join(words) if words else "custom_plugin"
+
+        improvement_opportunities = [
+            opp for opp in improvement_opportunities
+            if not (opp["type"] == "plugin" and _plugin_name_from(opp["description"]) in installed)
         ]
 
         # Sort by priority score
@@ -449,6 +496,448 @@ class SelfImproverPlugin(BasePlugin):
         log.append("=" * 60)
 
         return "\n".join(log)
+
+    # ── DRY Violation Scanner ─────────────────────────────────────────────
+
+    def _find_dry_violations(self) -> str:
+        """
+        Scan plugins/ for DRY violations:
+          1. Duplicate function bodies (identical AST dumps after normalisation).
+          2. Near-duplicate class structures (same public method names).
+
+        Returns a JSON report with file paths and line numbers.
+        """
+        plugins_dir = Path(__file__).parent.parent  # .../plugins/
+
+        # Collect all Python source files under plugins/
+        py_files = list(plugins_dir.rglob("*.py"))
+
+        # Map: normalised_body_hash -> [(file, lineno, func_name), ...]
+        func_body_map: dict = {}
+        # Map: frozenset(method_names) -> [(file, class_name), ...]
+        class_sig_map: dict = {}
+
+        for py_file in py_files:
+            try:
+                source = py_file.read_text(encoding="utf-8", errors="replace")
+                tree   = ast.parse(source, filename=str(py_file))
+            except (SyntaxError, OSError):
+                continue
+
+            for node in ast.walk(tree):
+                # ── Function body deduplication ───────────────────────────
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    # Normalise: strip docstrings and rename all local vars to 'v0', 'v1'...
+                    body_nodes = node.body
+                    # Skip pure-docstring functions
+                    if (len(body_nodes) == 1 and
+                            isinstance(body_nodes[0], ast.Expr) and
+                            isinstance(body_nodes[0].value, ast.Constant)):
+                        continue
+
+                    try:
+                        # Use ast.dump as a canonical representation of the body
+                        body_dump = ast.dump(ast.Module(body=body_nodes, type_ignores=[]))
+                    except Exception:
+                        continue
+
+                    key = body_dump
+                    entry = (str(py_file), node.lineno, node.name)
+                    if key not in func_body_map:
+                        func_body_map[key] = []
+                    func_body_map[key].append(entry)
+
+                # ── Class method signature deduplication ──────────────────
+                if isinstance(node, ast.ClassDef):
+                    method_names = frozenset(
+                        n.name for n in ast.walk(node)
+                        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and not n.name.startswith("_")
+                    )
+                    if len(method_names) >= 3:   # Only flag substantive classes
+                        key = method_names
+                        entry = (str(py_file), node.name)
+                        if key not in class_sig_map:
+                            class_sig_map[key] = []
+                        class_sig_map[key].append(entry)
+
+        # Collect duplicate function bodies
+        dup_funcs = []
+        for _, occurrences in func_body_map.items():
+            if len(occurrences) >= 2:
+                dup_funcs.append({
+                    "type": "duplicate_function_body",
+                    "occurrences": [
+                        {"file": f, "line": l, "function": n}
+                        for f, l, n in occurrences
+                    ],
+                    "suggestion": "Extract into a shared utility function."
+                })
+
+        # Collect duplicate class signatures
+        dup_classes = []
+        for sig_key, occurrences in class_sig_map.items():
+            if len(occurrences) >= 2:
+                dup_classes.append({
+                    "type": "duplicate_class_structure",
+                    "shared_methods": sorted(sig_key),
+                    "occurrences": [
+                        {"file": f, "class": c} for f, c in occurrences
+                    ],
+                    "suggestion": "Consider a shared base class or mixin."
+                })
+
+        total = len(dup_funcs) + len(dup_classes)
+        report = {
+            "scanned_files": len(py_files),
+            "total_violations": total,
+            "duplicate_function_bodies": dup_funcs,
+            "duplicate_class_structures": dup_classes,
+            "timestamp": datetime.now().isoformat()
+        }
+        return json.dumps(report, indent=2)
+
+    # ── Performance Bottleneck Scanner ────────────────────────────────────
+
+    def _find_performance_bottlenecks(self) -> str:
+        """
+        Scan the Nexus codebase for common performance anti-patterns:
+          - Synchronous blocking I/O inside async functions (open/read/write
+            without asyncio or aiofiles)
+          - Missing asyncio.wait_for timeouts on awaited calls
+          - Large list comprehensions that could be generators
+          - urllib.request calls inside async functions (blocking)
+        """
+        nexus_root  = Path(__file__).parent.parent.parent
+        py_files    = list(nexus_root.rglob("*.py"))
+        findings    = []
+
+        # Patterns expressed as (label, regex)
+        sync_io_in_async = re.compile(
+            r'^\s*(open\(|Path\([^)]*\)\.(read_text|write_text|read_bytes|write_bytes))',
+            re.MULTILINE
+        )
+        urllib_call = re.compile(r'urllib\.request\.(urlopen|urlretrieve)')
+        large_listcomp = re.compile(r'\[.{80,}\s+for\s+\w+\s+in\s+')
+        wait_for_missing = re.compile(r'await\s+(?!asyncio\.wait_for)\w[\w.]*\.execute\(')
+
+        for py_file in py_files:
+            try:
+                source = py_file.read_text(encoding="utf-8", errors="replace")
+                tree   = ast.parse(source, filename=str(py_file))
+            except (SyntaxError, OSError):
+                continue
+
+            lines = source.splitlines()
+
+            # Walk AST to identify async function bodies
+            async_func_ranges: list = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.AsyncFunctionDef):
+                    end = getattr(node, "end_lineno", node.lineno + 50)
+                    async_func_ranges.append((node.lineno, end, node.name))
+
+            def in_async(lineno: int) -> str:
+                for start, end, name in async_func_ranges:
+                    if start <= lineno <= end:
+                        return name
+                return ""
+
+            for i, line in enumerate(lines, 1):
+                # Sync I/O in async context
+                if sync_io_in_async.search(line):
+                    fn = in_async(i)
+                    if fn:
+                        findings.append({
+                            "file":    str(py_file),
+                            "line":    i,
+                            "type":    "sync_io_in_async",
+                            "snippet": line.strip(),
+                            "in_func": fn,
+                            "suggestion": "Use asyncio.to_thread() or aiofiles for non-blocking I/O."
+                        })
+
+                # urllib.request inside async function (blocking)
+                if urllib_call.search(line):
+                    fn = in_async(i)
+                    if fn:
+                        findings.append({
+                            "file":    str(py_file),
+                            "line":    i,
+                            "type":    "blocking_http_in_async",
+                            "snippet": line.strip(),
+                            "in_func": fn,
+                            "suggestion": "Wrap urllib calls in asyncio.to_thread() or use aiohttp."
+                        })
+
+                # Large list comprehensions (potential generator opportunity)
+                if large_listcomp.search(line) and len(line) > 90:
+                    findings.append({
+                        "file":    str(py_file),
+                        "line":    i,
+                        "type":    "large_list_comprehension",
+                        "snippet": line.strip()[:120],
+                        "suggestion": "Consider a generator expression to reduce memory usage."
+                    })
+
+                # await plugin.execute() calls not wrapped in asyncio.wait_for
+                if wait_for_missing.search(line):
+                    fn = in_async(i)
+                    if fn and "wait_for" not in line:
+                        findings.append({
+                            "file":    str(py_file),
+                            "line":    i,
+                            "type":    "missing_wait_for_timeout",
+                            "snippet": line.strip(),
+                            "in_func": fn,
+                            "suggestion": "Wrap with asyncio.wait_for(..., timeout=N) to prevent hangs."
+                        })
+
+        report = {
+            "scanned_files": len(py_files),
+            "total_findings": len(findings),
+            "findings": findings,
+            "timestamp": datetime.now().isoformat()
+        }
+        return json.dumps(report, indent=2)
+
+    # ── Memory Consolidation ──────────────────────────────────────────────
+
+    @staticmethod
+    def _jaccard(tokens_a: set, tokens_b: set) -> float:
+        if not tokens_a and not tokens_b:
+            return 1.0
+        union = tokens_a | tokens_b
+        inter = tokens_a & tokens_b
+        return len(inter) / len(union)
+
+    @staticmethod
+    def _tokenise(text: str) -> set:
+        """Simple word-level tokenisation for similarity comparison."""
+        return set(re.findall(r"[a-z]{2,}", text.lower()))
+
+    def _deduplicate_list(self, items: list, text_key: str,
+                           similarity_threshold: float = 0.85) -> tuple:
+        """
+        Remove near-duplicate items from a list of dicts.
+        Returns (deduplicated_list, removed_count).
+        """
+        kept   = []
+        removed = 0
+        seen_tokens: list = []
+
+        for item in items:
+            text   = str(item.get(text_key, ""))
+            tokens = self._tokenise(text)
+
+            is_dup = False
+            for prev_tokens in seen_tokens:
+                if self._jaccard(tokens, prev_tokens) >= similarity_threshold:
+                    is_dup = True
+                    break
+
+            if not is_dup:
+                kept.append(item)
+                seen_tokens.append(tokens)
+            else:
+                removed += 1
+
+        return kept, removed
+
+    def _consolidate_memory(self) -> str:
+        """
+        Deduplicate memory/interaction_log.json and memory/tasks.json.
+        Saves cleaned versions back to disk and reports what was removed.
+        """
+        memory_dir = Path(__file__).parent.parent.parent / "memory"
+        report_lines = ["Memory Consolidation Report", "=" * 40, ""]
+
+        results = {}
+
+        for filename, text_key in [
+            ("interaction_log.json", "content"),
+            ("tasks.json",           "description"),
+        ]:
+            filepath = memory_dir / filename
+            if not filepath.exists():
+                report_lines.append(f"{filename}: not found, skipping.")
+                continue
+
+            try:
+                raw = json.loads(filepath.read_text(encoding="utf-8"))
+            except Exception as e:
+                report_lines.append(f"{filename}: failed to read — {e}")
+                continue
+
+            # Normalise: handle both list and dict-with-list structures
+            if isinstance(raw, list):
+                items = raw
+                wrapper = None
+            elif isinstance(raw, dict):
+                # Find first list value
+                wrapper_key = next((k for k, v in raw.items() if isinstance(v, list)), None)
+                items = raw.get(wrapper_key, []) if wrapper_key else []
+                wrapper = (raw, wrapper_key)
+            else:
+                report_lines.append(f"{filename}: unexpected format, skipping.")
+                continue
+
+            original_count = len(items)
+
+            # Try the declared text_key; fall back to first string field
+            if items and text_key not in items[0]:
+                for k, v in items[0].items():
+                    if isinstance(v, str):
+                        text_key = k
+                        break
+
+            cleaned, removed = self._deduplicate_list(items, text_key)
+
+            # Write back
+            try:
+                if wrapper is None:
+                    out_data = cleaned
+                else:
+                    out_data = dict(wrapper[0])
+                    out_data[wrapper[1]] = cleaned
+
+                filepath.write_text(
+                    json.dumps(out_data, indent=2, ensure_ascii=False),
+                    encoding="utf-8"
+                )
+            except Exception as e:
+                report_lines.append(f"{filename}: failed to write — {e}")
+                continue
+
+            results[filename] = {"original": original_count, "kept": len(cleaned),
+                                  "removed": removed}
+            report_lines.append(
+                f"{filename}: {original_count} entries → {len(cleaned)} kept, "
+                f"{removed} duplicates removed."
+            )
+
+        report_lines += ["", f"Completed at {datetime.now().isoformat()}"]
+        return "\n".join(report_lines)
+
+    # ── Knowledge Categorisation ──────────────────────────────────────────
+
+    def _categorize_knowledge(self) -> str:
+        """
+        Load knowledge base JSON files from memory/, standardise tag names
+        (lowercase, spaces→underscores), merge synonymous tags, remove orphaned
+        entries (entries with no tags or empty content).
+        """
+        memory_dir = Path(__file__).parent.parent.parent / "memory"
+        kb_files   = list(memory_dir.glob("knowledge*.json"))
+
+        if not kb_files:
+            return "No knowledge base files found in memory/."
+
+        # Common synonymous tag groups to merge
+        _TAG_GROUPS: list = [
+            {"ml", "machine_learning", "machinelearning", "machine learning"},
+            {"ai", "artificial_intelligence", "artifical_intelligence"},
+            {"nlp", "natural_language_processing", "natural language processing"},
+            {"api", "rest_api", "restapi", "rest api"},
+            {"config", "configuration", "settings", "setup"},
+            {"util", "utility", "utilities", "helper", "helpers"},
+            {"doc", "docs", "documentation"},
+            {"test", "tests", "testing", "unit_test"},
+            {"db", "database", "databases"},
+            {"ui", "interface", "user_interface"},
+        ]
+
+        def normalise_tag(tag: str) -> str:
+            """Lowercase, strip, replace spaces/hyphens with underscores."""
+            return re.sub(r"[\s\-]+", "_", tag.strip().lower())
+
+        def canonical_tag(tag: str) -> str:
+            """Return the canonical form from tag groups, or the normalised tag itself."""
+            t = normalise_tag(tag)
+            for group in _TAG_GROUPS:
+                if t in group:
+                    # Return the shortest member as canonical
+                    return min(group, key=len)
+            return t
+
+        report_lines = ["Knowledge Categorisation Report", "=" * 40, ""]
+        total_changed = 0
+        total_orphans = 0
+
+        for kb_file in kb_files:
+            try:
+                raw = json.loads(kb_file.read_text(encoding="utf-8"))
+            except Exception as e:
+                report_lines.append(f"{kb_file.name}: read error — {e}")
+                continue
+
+            entries = raw if isinstance(raw, list) else raw.get("entries", raw.get("items", []))
+            if not isinstance(entries, list):
+                report_lines.append(f"{kb_file.name}: unrecognised structure, skipping.")
+                continue
+
+            cleaned_entries = []
+            changed = 0
+            orphans = 0
+
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+
+                # Check for empty content
+                content_val = entry.get("content", entry.get("text", entry.get("description", "")))
+                if not content_val or not str(content_val).strip():
+                    orphans += 1
+                    continue
+
+                # Standardise tags
+                original_tags = entry.get("tags", entry.get("categories", []))
+                if isinstance(original_tags, list):
+                    new_tags = list(dict.fromkeys(
+                        canonical_tag(t) for t in original_tags if t
+                    ))
+                    if new_tags != original_tags:
+                        changed += 1
+                        # Update the correct key
+                        if "tags" in entry:
+                            entry = dict(entry, tags=new_tags)
+                        elif "categories" in entry:
+                            entry = dict(entry, categories=new_tags)
+
+                cleaned_entries.append(entry)
+
+            # Write back
+            try:
+                if isinstance(raw, list):
+                    out_data = cleaned_entries
+                else:
+                    out_data = dict(raw)
+                    list_key = next((k for k, v in raw.items() if isinstance(v, list)),
+                                    "entries")
+                    out_data[list_key] = cleaned_entries
+
+                kb_file.write_text(
+                    json.dumps(out_data, indent=2, ensure_ascii=False),
+                    encoding="utf-8"
+                )
+            except Exception as e:
+                report_lines.append(f"{kb_file.name}: write error — {e}")
+                continue
+
+            total_changed += changed
+            total_orphans += orphans
+            report_lines.append(
+                f"{kb_file.name}: {len(entries)} entries processed, "
+                f"{changed} tags standardised, {orphans} orphaned entries removed."
+            )
+
+        report_lines += [
+            "",
+            f"Total tags standardised : {total_changed}",
+            f"Total orphans removed   : {total_orphans}",
+            f"Completed at {datetime.now().isoformat()}"
+        ]
+        return "\n".join(report_lines)
 
     async def _get_plan(self) -> str:
         """Return the current improvement plan."""

@@ -120,14 +120,14 @@ class BrowserEngine:
         """
         Wait for the user to manually log in on a page.
         Checks for indicator_selector periodically.
-        
+
         Args:
             max_wait: Maximum seconds to wait (default 5 minutes)
         """
-        elapsed = 0.0
-        while elapsed < max_wait:
+        import time
+        deadline = time.monotonic() + max_wait
+        while time.monotonic() < deadline:
             if await self.check_logged_in(name, indicator_selector, timeout=2000):
                 return True
             await asyncio.sleep(check_interval)
-            elapsed += check_interval
         return False

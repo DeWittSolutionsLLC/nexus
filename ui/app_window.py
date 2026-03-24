@@ -42,6 +42,9 @@ class AppWindow:
         self.root.minsize(950, 620)
         self.root.configure(fg_color=COLORS["bg_primary"])
 
+        # Graceful shutdown — stop asyncio loop before Tkinter tears down
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
         # Keyboard shortcuts
         self.root.bind("<Control-l>", lambda e: self._trigger_voice())
         self.root.bind("<Control-k>", lambda e: self._clear_chat())
@@ -1928,6 +1931,23 @@ class AppWindow:
     def _update_chat(self, msg: str):
         self._ui_call(lambda: self.chat.add_bot_message(msg))
 
+    def _on_close(self):
+        """Graceful shutdown: stop asyncio loop before Tkinter destroys the window."""
+        # Stop the background event loop so no thread touches Tkinter after this point
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        # Give the loop thread ~150 ms to drain, then destroy the window
+        self.root.after(150, self._final_destroy)
+
+    def _final_destroy(self):
+        try:
+            self._loop_thread.join(timeout=0.5)
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+
     def run(self):
         self._loop_thread.start()
         try:
@@ -1937,11 +1957,6 @@ class AppWindow:
         self.root.after(0, self._drain_ui_queue)   # start queue drain on main thread
         asyncio.run_coroutine_threadsafe(self._startup(), self.loop)
         self.root.mainloop()
-
-        # Cleanup on exit
-        asyncio.run_coroutine_threadsafe(self.browser_engine.stop(), self.loop)
-        asyncio.run_coroutine_threadsafe(self.plugin_manager.disconnect_all(), self.loop)
-        self.loop.call_soon_threadsafe(self.loop.stop)
 
     # ── ML Tab Methods ──────────────────────────────────────────
 

@@ -10,6 +10,7 @@ Features:
 
 import json
 import logging
+import math
 import random
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -91,6 +92,21 @@ class AutonomousMLPlugin(BasePlugin):
                 "action": "reset_learning",
                 "description": "Reset learning progress (use with caution)",
                 "params": []
+            },
+            {
+                "action": "grid_search",
+                "description": "Exhaustive grid search over Nexus hyperparameters (temperature, top_p, routing threshold)",
+                "params": []
+            },
+            {
+                "action": "bayesian_optimize",
+                "description": "Lightweight Bayesian optimisation of hyperparameters using UCB acquisition",
+                "params": []
+            },
+            {
+                "action": "get_optimization_results",
+                "description": "Return best hyperparameters found by grid search and/or Bayesian optimisation",
+                "params": []
             }
         ]
 
@@ -107,6 +123,22 @@ class AutonomousMLPlugin(BasePlugin):
                 return self._analyze_performance()
             elif action == "reset_learning":
                 return self._reset_learning()
+            elif action == "grid_search":
+                result = self._run_grid_search()
+                # Persist grid search results
+                grid_file = POLICY_FILE.parent / "grid_search_results.json"
+                try:
+                    POLICY_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    grid_file.write_text(json.dumps(result, indent=2, ensure_ascii=False),
+                                         encoding="utf-8")
+                except Exception as e:
+                    logger.error(f"Failed to save grid search results: {e}")
+                return json.dumps(result, indent=2)
+            elif action == "bayesian_optimize":
+                result = self._run_bayesian_optimization()
+                return json.dumps(result, indent=2)
+            elif action == "get_optimization_results":
+                return json.dumps(self._get_optimization_results(), indent=2)
             else:
                 return f"Unknown action: {action}"
         except Exception as e:
@@ -377,3 +409,261 @@ class AutonomousMLPlugin(BasePlugin):
                 json.dump(self._experience_buffer, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Failed to save experience buffer: {e}")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Grid Search & Bayesian Optimisation (new capabilities)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    _GRID_TEMPERATURE = [0.1, 0.3, 0.5, 0.7, 0.9]
+    _GRID_TOP_P       = [0.7, 0.8, 0.9, 0.95, 1.0]
+    _GRID_THRESHOLD   = [0.3, 0.5, 0.7]
+
+    def _score_hyperparams(self, temperature: float, top_p: float, threshold: float) -> float:
+        """
+        Score a hyperparameter combination by correlating with high-reward
+        interactions stored in the experience buffer.
+
+        Returns a float in [0, 1] — higher is better.
+        """
+        if not self._experience_buffer:
+            # No data: use a simple heuristic favouring mid-range values
+            t_score = 1.0 - abs(temperature - 0.5) * 2
+            p_score = 1.0 - abs(top_p - 0.9) * 5
+            th_score = 1.0 - abs(threshold - 0.5) * 2
+            return (t_score + p_score + th_score) / 3.0
+
+        total_reward = 0.0
+        total_weight = 0.0
+
+        for exp in self._experience_buffer:
+            success = exp.get("success_score", 0.5)
+            features = exp.get("state_features", {})
+            is_complex = features.get("is_complex", False)
+
+            # Weight each experience by how well these hyperparams match the
+            # kind of interaction (heuristic proxy, no LLM calls needed).
+            weight = 1.0
+            if is_complex and temperature > 0.5:
+                weight += 0.3   # creative tasks benefit from higher temperature
+            if not is_complex and temperature < 0.5:
+                weight += 0.3   # factual tasks benefit from lower temperature
+
+            # top_p: high top_p rewards diversity; low rewards focus
+            input_len = features.get("input_length", 50)
+            if input_len > 100 and top_p >= 0.9:
+                weight += 0.2
+            if input_len <= 100 and top_p <= 0.8:
+                weight += 0.2
+
+            # threshold: mid-range thresholds are usually best
+            th_penalty = abs(threshold - 0.5) * 0.4
+            weight = max(0.1, weight - th_penalty)
+
+            total_reward += success * weight
+            total_weight += weight
+
+        return total_reward / total_weight if total_weight > 0 else 0.5
+
+    def _run_grid_search(self) -> dict:
+        """Exhaustive grid search over hyperparameter space."""
+        best_score = -1.0
+        best_params: dict = {}
+        results = []
+
+        total = (len(self._GRID_TEMPERATURE) *
+                 len(self._GRID_TOP_P) *
+                 len(self._GRID_THRESHOLD))
+
+        for temp in self._GRID_TEMPERATURE:
+            for top_p in self._GRID_TOP_P:
+                for thresh in self._GRID_THRESHOLD:
+                    score = self._score_hyperparams(temp, top_p, thresh)
+                    results.append({
+                        "temperature": temp,
+                        "top_p": top_p,
+                        "routing_threshold": thresh,
+                        "score": round(score, 4)
+                    })
+                    if score > best_score:
+                        best_score = score
+                        best_params = {
+                            "temperature": temp,
+                            "top_p": top_p,
+                            "routing_threshold": thresh
+                        }
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return {
+            "method": "grid_search",
+            "total_combinations": total,
+            "best_params": best_params,
+            "best_score": round(best_score, 4),
+            "top_10": results[:10],
+            "timestamp": datetime.now().isoformat()
+        }
+
+    # ── Bayesian Optimisation ─────────────────────────────────────────────
+
+    def _bayesian_surrogate(self, temperature: float, top_p: float,
+                             threshold: float,
+                             observations: list) -> tuple:
+        """
+        Lightweight surrogate model — no scipy/sklearn.
+
+        Returns (mean_estimate, exploration_bonus).
+        mean_estimate:      weighted average of nearby observed scores.
+        exploration_bonus:  inversely proportional to visit count.
+        """
+        if not observations:
+            base = self._score_hyperparams(temperature, top_p, threshold)
+            return base, 0.5   # High bonus when no data
+
+        weighted_sum = 0.0
+        weight_total = 0.0
+        visit_count = 0
+
+        for obs in observations:
+            # Euclidean distance in normalised hyperparameter space
+            dt = (temperature - obs["temperature"]) / 0.8   # range ~0.8
+            dp = (top_p - obs["top_p"]) / 0.3               # range ~0.3
+            dth = (threshold - obs["threshold"]) / 0.4      # range ~0.4
+            dist = (dt**2 + dp**2 + dth**2) ** 0.5
+
+            # Gaussian-like kernel
+            kernel = math.exp(-4.0 * dist**2) if dist < 2 else 0.0
+            weighted_sum += kernel * obs["score"]
+            weight_total += kernel
+
+            if dist < 0.15:     # "visited" if close enough
+                visit_count += 1
+
+        if weight_total > 1e-9:
+            mean_est = weighted_sum / weight_total
+        else:
+            mean_est = self._score_hyperparams(temperature, top_p, threshold)
+
+        # Exploration bonus: high when unvisited
+        exploration_bonus = 1.0 / (1.0 + visit_count * 3.0)
+        return mean_est, exploration_bonus
+
+    def _acquisition_function(self, temperature: float, top_p: float,
+                               threshold: float, observations: list,
+                               best_score: float, kappa: float = 2.0) -> float:
+        """UCB (Upper Confidence Bound) acquisition function."""
+        mean, bonus = self._bayesian_surrogate(temperature, top_p, threshold, observations)
+        return mean + kappa * bonus
+
+    def _run_bayesian_optimization(self, n_iterations: int = 30) -> dict:
+        """
+        Lightweight Bayesian optimisation over the same hyperparameter space.
+
+        Uses random candidate generation + UCB acquisition.
+        """
+        import random as _rnd
+
+        observations: list = []
+        best_score = -1.0
+        best_params: dict = {}
+
+        # Seed with a few grid points first
+        seed_points = [
+            (0.5, 0.9, 0.5),
+            (0.3, 0.8, 0.3),
+            (0.7, 0.95, 0.7),
+        ]
+        for temp, top_p, thresh in seed_points:
+            score = self._score_hyperparams(temp, top_p, thresh)
+            obs = {"temperature": temp, "top_p": top_p,
+                   "threshold": thresh, "score": score}
+            observations.append(obs)
+            if score > best_score:
+                best_score = score
+                best_params = {"temperature": temp, "top_p": top_p,
+                               "routing_threshold": thresh}
+
+        for _ in range(n_iterations):
+            # Generate random candidates
+            n_candidates = 20
+            best_acq = -1.0
+            best_candidate = None
+
+            for _ in range(n_candidates):
+                temp  = _rnd.choice(self._GRID_TEMPERATURE)
+                top_p = _rnd.choice(self._GRID_TOP_P)
+                thresh = _rnd.choice(self._GRID_THRESHOLD)
+                acq = self._acquisition_function(temp, top_p, thresh,
+                                                  observations, best_score)
+                if acq > best_acq:
+                    best_acq = acq
+                    best_candidate = (temp, top_p, thresh)
+
+            if best_candidate:
+                temp, top_p, thresh = best_candidate
+                score = self._score_hyperparams(temp, top_p, thresh)
+                observations.append({"temperature": temp, "top_p": top_p,
+                                      "threshold": thresh, "score": score})
+                if score > best_score:
+                    best_score = score
+                    best_params = {"temperature": temp, "top_p": top_p,
+                                   "routing_threshold": thresh}
+
+        result = {
+            "method": "bayesian_optimization",
+            "iterations": n_iterations + len(seed_points),
+            "best_params": best_params,
+            "best_score": round(best_score, 4),
+            "observations": sorted(observations, key=lambda x: x["score"], reverse=True)[:10],
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Persist results
+        out_file = POLICY_FILE.parent / "bayesian_results.json"
+        try:
+            POLICY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(json.dumps(result, indent=2, ensure_ascii=False),
+                                encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Failed to save Bayesian results: {e}")
+
+        return result
+
+    def _get_optimization_results(self) -> dict:
+        """Return best known parameters from all optimisation runs."""
+        out_file = POLICY_FILE.parent / "bayesian_results.json"
+        grid_file = POLICY_FILE.parent / "grid_search_results.json"
+
+        results = {}
+
+        if out_file.exists():
+            try:
+                results["bayesian"] = json.loads(out_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        if grid_file.exists():
+            try:
+                results["grid_search"] = json.loads(grid_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        if not results:
+            return {"message": "No optimisation results yet. Run grid_search or bayesian_optimize first."}
+
+        # Determine overall best
+        candidates = []
+        if "bayesian" in results:
+            candidates.append(("bayesian", results["bayesian"]["best_score"],
+                                results["bayesian"]["best_params"]))
+        if "grid_search" in results:
+            candidates.append(("grid_search", results["grid_search"]["best_score"],
+                                results["grid_search"]["best_params"]))
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        best_method, best_score, best_params = candidates[0]
+
+        results["overall_best"] = {
+            "method": best_method,
+            "score": best_score,
+            "params": best_params
+        }
+        return results
