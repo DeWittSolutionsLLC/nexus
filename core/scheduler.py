@@ -2,9 +2,10 @@
 Scheduler — Recurring and one-off automated tasks via APScheduler.
 """
 
+import asyncio
 import logging
 from datetime import datetime
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger("nexus.scheduler")
@@ -15,7 +16,7 @@ class TaskScheduler:
         self.config = config
         self.plugin_manager = plugin_manager
         tz = config.get("timezone", "America/Detroit")
-        self.scheduler = AsyncIOScheduler(timezone=tz)
+        self.scheduler = BackgroundScheduler(timezone=tz)
         self.tasks: list[dict] = []
 
     def start(self):
@@ -28,13 +29,17 @@ class TaskScheduler:
     def add_task(self, name: str, cron: str, actions: list[dict]) -> str:
         task_id = f"task_{len(self.tasks)}_{name.replace(' ', '_')[:20]}"
         trigger = CronTrigger.from_crontab(cron)
-        self.scheduler.add_job(self._run_actions, trigger=trigger, args=[actions], id=task_id, name=name)
+        self.scheduler.add_job(self._run_actions_sync, trigger=trigger, args=[actions], id=task_id, name=name)
         self.tasks.append({
             "id": task_id, "name": name, "cron": cron,
             "actions": actions, "created": datetime.now().isoformat(), "enabled": True,
         })
         logger.info(f"Scheduled: {name} [{cron}]")
         return task_id
+
+    def _run_actions_sync(self, actions: list[dict]):
+        """BackgroundScheduler calls sync functions — run the async job in a fresh event loop."""
+        asyncio.run(self._run_actions(actions))
 
     async def _run_actions(self, actions: list[dict]):
         for spec in actions:
