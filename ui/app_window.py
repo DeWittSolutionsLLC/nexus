@@ -1296,7 +1296,7 @@ class AppWindow:
 
             if rtype == "conversation":
                 msg = result.get("message", "I'm not sure how to help with that, sir.")
-                self._reply(msg, speak_text or msg[:200])
+                self._reply(msg, speak_text or msg)
                 self._set_status("Ready")
 
             elif rtype == "action":
@@ -1306,7 +1306,7 @@ class AppWindow:
                 if plugin and plugin.is_connected:
                     self._set_status(f"Executing: {result.get('plugin')} → {result.get('action')}")
                     out = await plugin.execute(result["action"], result.get("params", {}))
-                    short = out[:150].split("\n")[0] if out else "Done."
+                    short = out[:400] if out else "Done."
                     if self.voice_engine and hasattr(self.voice_engine, "play_confirm"):
                         self.voice_engine.play_confirm()
                     self._reply(out, short)
@@ -1471,7 +1471,8 @@ class AppWindow:
     def _on_voice_command(self, text: str):
         if text == "[wake]":
             if self.voice_engine:
-                self.voice_engine.speak_async("Yes, sir?")
+                address = getattr(self.assistant.personality, "address_as", "sir")
+                self.voice_engine.speak_async(f"Yes, {address}?")
             return
         self.root.after(0, lambda t=text: self._handle_voice_command(t))
 
@@ -1484,14 +1485,18 @@ class AppWindow:
         voice_plugin = self.plugin_manager.get_plugin("voice")
         if voice_plugin and hasattr(voice_plugin, "voice_engine") and voice_plugin.voice_engine:
             ve = voice_plugin.voice_engine
-            self.voice_engine = ve
-            self.chat.set_voice_engine(ve)
-            self.assistant.voice_engine = ve
-            ve.start_listening(on_command=self._on_voice_command)
-            voice_plugin._status_message = "Listening for 'Nexus'"
+            if ve.tts_available:
+                self.voice_engine = ve
+                self.chat.set_voice_engine(ve)
+                self.assistant.voice_engine = ve
+                address = getattr(self.assistant.personality, "address_as", "sir")
+                ve.speak_async(f"Nexus online. All systems ready, {address}.")
+                logger.info("TTS wired — responses will be read aloud")
+            if ve.is_available:
+                ve.start_listening(on_command=self._on_voice_command)
+                voice_plugin._status_message = "Listening for 'Nexus'"
+                logger.info("Voice active — wake-word listening started")
             self.sidebar.update_status()
-            ve.speak_async("Nexus online. All systems ready, sir.")
-            logger.info("Voice active — wake-word listening started")
 
     # ── Tab panel refreshers ───────────────────────────────────
 

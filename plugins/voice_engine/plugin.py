@@ -36,6 +36,11 @@ class VoicePlugin(BasePlugin):
                 self._connected = True
                 self._status_message = "Ready (click MIC to talk)"
                 return True
+            elif self.voice_engine.tts_available:
+                # TTS works but Whisper/STT is not loaded — still connect for read-back
+                self._connected = True
+                self._status_message = "TTS only (Whisper not loaded)"
+                return True
             else:
                 self._status_message = "Whisper model not loaded"
                 return False

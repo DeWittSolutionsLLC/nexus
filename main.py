@@ -32,24 +32,13 @@ def load_config() -> dict:
         return json.load(f)
 
 
-_OBSERVER_CPU_QUIPS = [
-    "A brief thermal advisory, sir: CPU is running at {cpu:.0f}%. Entirely manageable — I merely thought you should know.",
-    "I should mention, sir, that CPU load has reached {cpu:.0f}%. I'm keeping up admirably, of course.",
-    "Processing pressure is somewhat elevated at {cpu:.0f}% CPU, sir. I shall endeavour not to let it show.",
-]
-
-_OBSERVER_FOCUS_QUIPS = [
-    "Pardon the interruption, sir, but you've been in '{app}' for over {hours} hour{s}. Even the most dedicated minds benefit from a brief respite.",
-    "Sir, '{app}' has held your attention for rather a long time — {hours} hour{s}. Might I suggest a short break?",
-    "I've noted {hours} hour{s} in '{app}', sir. Shall I remind you to look away from the screen for a moment?",
-]
-
-
-def _start_observer(plugin_manager) -> None:
+def _start_observer(plugin_manager, assistant=None) -> None:
     """
     Feature 3 — Proactive Awareness Observer.
     Polls system load and app focus every 60 s.
     Speaks observations via the voice_engine when thresholds are crossed.
+    Quips are sourced dynamically from the active personality so they stay
+    in character even after a runtime personality switch.
     """
     CPU_THRESHOLD      = 85.0    # % — triggers a thermal advisory
     CPU_COOLDOWN       = 900     # seconds between CPU alerts (15 min)
@@ -59,6 +48,12 @@ def _start_observer(plugin_manager) -> None:
 
     _last_cpu_alert: float = 0.0
     _last_focus_alert: dict[str, float] = {}
+
+    def _personality():
+        """Return the current personality engine (follows runtime switches)."""
+        if assistant and hasattr(assistant, "personality"):
+            return assistant.personality
+        return None
 
     def _speak(text: str) -> None:
         """Lazily resolve the voice engine and speak asynchronously."""
@@ -87,7 +82,11 @@ def _start_observer(plugin_manager) -> None:
                     cpu = psutil.cpu_percent(interval=1)
                     if cpu > CPU_THRESHOLD and (now - _last_cpu_alert) > CPU_COOLDOWN:
                         _last_cpu_alert = now
-                        _speak(random.choice(_OBSERVER_CPU_QUIPS).format(cpu=cpu))
+                        pe = _personality()
+                        if pe:
+                            _speak(pe.get_cpu_quip(cpu))
+                        else:
+                            _speak(f"CPU is running at {cpu:.0f}%.")
                 except Exception:
                     pass
 
@@ -110,11 +109,11 @@ def _start_observer(plugin_manager) -> None:
                                 _last_focus_alert[current_app] = now
                                 hours = max(1, secs_in_app // 3600)
                                 s = "s" if hours > 1 else ""
-                                _speak(
-                                    random.choice(_OBSERVER_FOCUS_QUIPS).format(
-                                        app=current_app, hours=hours, s=s
-                                    )
-                                )
+                                pe = _personality()
+                                if pe:
+                                    _speak(pe.get_focus_quip(current_app, hours, s))
+                                else:
+                                    _speak(f"You've been in '{current_app}' for {hours} hour{s}.")
                 except Exception:
                     pass
 
@@ -223,8 +222,14 @@ def main():
     # -- Start scheduler (autonomous ML learning, cron tasks) --
     scheduler.start()
 
+    # -- Apply personality voice to voice engine --
+    ve_plugin = plugin_manager.get_plugin("voice_engine")
+    if ve_plugin and hasattr(ve_plugin, "voice_engine") and ve_plugin.voice_engine:
+        ve_plugin.voice_engine.apply_personality(assistant.personality_data)
+        logger.info(f"Voice personality applied: {assistant.personality_data.get('name', '?')}")
+
     # -- Proactive Observer (Feature 3) --
-    _start_observer(plugin_manager)
+    _start_observer(plugin_manager, assistant=assistant)
 
     # -- Launch UI --
     from ui.app_window import AppWindow

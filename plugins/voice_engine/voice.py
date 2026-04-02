@@ -152,6 +152,8 @@ class VoiceEngine:
         self._voice_volume  = config.get("voice_volume", 0.95)
         self._voice_id      = config.get("voice_id", None)
         self._sound_enabled = config.get("sound_effects", True)
+        # Personality preferred voices override PREFERRED_VOICES if provided
+        self._personality_voices: list[str] = config.get("personality_voices", [])
 
     def initialize(self):
         self._load_whisper()
@@ -195,11 +197,12 @@ class VoiceEngine:
                             selected = v
                             break
 
-                # Try preferred voices in priority order
+                # Try preferred voices in priority order (personality list first, then defaults)
                 if not selected:
-                    for pref in PREFERRED_VOICES:
+                    voice_order = self._personality_voices + PREFERRED_VOICES
+                    for pref in voice_order:
                         for v in voices:
-                            if pref in v.name.lower():
+                            if pref.lower() in v.name.lower():
                                 selected = v
                                 break
                         if selected:
@@ -397,6 +400,38 @@ class VoiceEngine:
                 return True
         return False
 
+    def apply_personality(self, personality_data: dict) -> None:
+        """Apply voice settings from a personality dict (hot-swap safe)."""
+        voice_cfg = personality_data.get("voice", {})
+        preferred = voice_cfg.get("preferred_voices", [])
+        rate = voice_cfg.get("voice_rate")
+        volume = voice_cfg.get("voice_volume")
+
+        if rate is not None:
+            self._voice_rate = rate
+        if volume is not None:
+            self._voice_volume = volume
+
+        if self.tts_engine:
+            if rate is not None:
+                self.tts_engine.setProperty("rate", rate)
+            if volume is not None:
+                self.tts_engine.setProperty("volume", volume)
+
+            if preferred:
+                voices = self.tts_engine.getProperty("voices") or []
+                selected = None
+                for pref in preferred:
+                    for v in voices:
+                        if pref.lower() in v.name.lower():
+                            selected = v
+                            break
+                    if selected:
+                        break
+                if selected:
+                    self.tts_engine.setProperty("voice", selected.id)
+                    logger.info(f"Personality voice applied: {selected.name} @ {rate} wpm")
+
     def set_rate(self, rate: int):
         self._voice_rate = rate
         if self.tts_engine:
@@ -421,3 +456,7 @@ class VoiceEngine:
     @property
     def is_available(self) -> bool:
         return self.whisper_model is not None
+
+    @property
+    def tts_available(self) -> bool:
+        return self.tts_engine is not None

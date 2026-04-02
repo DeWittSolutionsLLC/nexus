@@ -1,25 +1,5 @@
 [
   {
-    "id": 1,
-    "title": "Finish Genoya Invoice",
-    "due": "Monday",
-    "priority": "high",
-    "tags": [],
-    "status": "done",
-    "created": "2026-03-22T16:18:24.887489",
-    "completed": "2026-03-22T16:51:46.688891"
-  },
-  {
-    "id": 2,
-    "title": "Deals",
-    "due": null,
-    "priority": 3,
-    "tags": [],
-    "status": "done",
-    "created": "2026-03-22T16:36:38.402708",
-    "completed": "2026-03-22T16:51:46.706118"
-  },
-  {
     "id": 3,
     "title": "Friend's Birthday",
     "due": "Monday",
@@ -29,52 +9,14 @@
     "created": "2026-03-22T16:37:52.544344"
   },
   {
-    "id": 4,
-    "title": "By Inclined for Web Dev Business",
-    "due": null,
-    "priority": 2,
-    "tags": [],
-    "status": "done",
-    "created": "2026-03-22T16:38:55.485010",
-    "completed": "2026-03-22T16:39:22.988759"
-  },
-  {
-    "id": 5,
-    "title": "Check Cozi",
+    "id": 1,
+    "title": "Finish Genoya Invoice",
     "due": "Monday",
-    "priority": "low",
+    "priority": "high",
     "tags": [],
     "status": "done",
-    "created": "2026-03-22T18:03:51.444420",
-    "completed": "2026-03-22T18:04:57.989236"
-  },
-  {
-    "id": 6,
-    "title": "[AI/ML] Research Latest ML Papers & Conferences",
-    "due": "Weekly",
-    "priority": "high",
-    "tags": [
-      "ai_ml",
-      "research",
-      "self-improvement"
-    ],
-    "status": "in_progress",
-    "created": "2026-03-24T00:00:00.000000",
-    "description": "Review papers from NIPS, ICML, NeurIPS. Check arXiv for latest advancements."
-  },
-  {
-    "id": 7,
-    "title": "[AI/ML] Hyperparameter Tuning - Current Models",
-    "due": "This Week",
-    "priority": "high",
-    "tags": [
-      "ai_ml",
-      "optimization",
-      "model-improvement"
-    ],
-    "status": "in_progress",
-    "created": "2026-03-24T00:00:00.000000",
-    "description": "Apply grid search and Bayesian optimization to improve model performance metrics."
+    "created": "2026-03-22T16:18:24.887489",
+    "completed": "2026-03-22T16:51:46.688891"
   },
   {
     "id": 8,
@@ -91,6 +33,34 @@
     "description": "Integrate SHAP and LIME to understand model decisions and identify biases."
   },
   {
+    "id": 7,
+    "title": "[AI/ML] Hyperparameter Tuning - Current Models",
+    "due": "This Week",
+    "priority": "high",
+    "tags": [
+      "ai_ml",
+      "optimization",
+      "model-improvement"
+    ],
+    "status": "in_progress",
+    "created": "2026-03-24T00:00:00.000000",
+    "description": "Apply grid search and Bayesian optimization to improve model performance metrics."
+  },
+  {
+    "id": 6,
+    "title": "[AI/ML] Research Latest ML Papers & Conferences",
+    "due": "Weekly",
+    "priority": "high",
+    "tags": [
+      "ai_ml",
+      "research",
+      "self-improvement"
+    ],
+    "status": "in_progress",
+    "created": "2026-03-24T00:00:00.000000",
+    "description": "Review papers from NIPS, ICML, NeurIPS. Check arXiv for latest advancements."
+  },
+  {
     "id": 9,
     "title": "[AI/ML] Data Augmentation Pipeline",
     "due": "2 Weeks",
@@ -103,6 +73,40 @@
     "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Set up augmentation (rotation, flipping, mixup) and explore GANs for synthetic data."
+  },
+  {
+    "id": 12,
+    "title": "[AI/ML] Transfer Learning - Fine-tune Pre-trained Models",
+    "due": "2 Weeks",
+    "priority": "medium",
+    "tags": [
+      "ai_ml",
+      "transfer-learning",
+      "optimization"
+    ],
+    "status": "in_progress",
+    "created": "2026-03-24T00:00:00.000000",
+    "description": "Identify pre-trained models suitable for domain, fine-tune for specific tasks."
+  },
+  {
+    "id": 2,
+    "title": "Deals",
+    "due": null,
+    "priority": 3,
+    "tags": [],
+    "status": "done",
+    "created": "2026-03-22T16:36:38.402708",
+    "completed": "2026-03-22T16:51:46.706118"
+  },
+  {
+    "id": 4,
+    "title": "By Inclined for Web Dev Business",
+    "due": null,
+    "priority": 2,
+    "tags": [],
+    "status": "done",
+    "created": "2026-03-22T16:38:55.485010",
+    "completed": "2026-03-22T16:39:22.988759"
   },
   {
     "id": 10,
@@ -133,20 +137,6 @@
     "description": "Remove duplicate entries, consolidate similar information, improve categorization."
   },
   {
-    "id": 12,
-    "title": "[AI/ML] Transfer Learning - Fine-tune Pre-trained Models",
-    "due": "2 Weeks",
-    "priority": "medium",
-    "tags": [
-      "ai_ml",
-      "transfer-learning",
-      "optimization"
-    ],
-    "status": "in_progress",
-    "created": "2026-03-24T00:00:00.000000",
-    "description": "Identify pre-trained models suitable for domain, fine-tune for specific tasks."
-  },
-  {
     "id": 13,
     "title": "[AI/ML] Explore ML Algorithms (Supervised/Unsupervised/RL)",
     "due": "Monthly",
@@ -173,5 +163,15 @@
     "status": "in_progress",
     "created": "2026-03-24T00:00:00.000000",
     "description": "Apply refactors incrementally, monitor performance impact, document learnings."
+  },
+  {
+    "id": 5,
+    "title": "Check Cozi",
+    "due": "Monday",
+    "priority": "low",
+    "tags": [],
+    "status": "done",
+    "created": "2026-03-22T18:03:51.444420",
+    "completed": "2026-03-22T18:04:57.989236"
   }
 ]

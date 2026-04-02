@@ -7,48 +7,106 @@ import json
 import logging
 import random
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger("nexus.assistant")
+
+# ── Personality Loader ────────────────────────────────────────────────────────
+
+_PERSONALITIES_DIR = Path("config/personalities")
+_DEFAULT_PERSONALITY = "jarvis"
+
+_FALLBACK_PERSONALITY: dict = {
+    "name": "J.A.R.V.I.S.",
+    "address_as": "sir",
+    "system_prompt": (
+        "You are J.A.R.V.I.S., the AI core of Nexus. British, impeccably polite, "
+        "quietly witty, fiercely protective of your user. Address the user as \"{address_as}.\"\n\n"
+        "{mood_note}\n\nNow: {datetime}\nCapabilities: {capabilities}\nContext: {memory_context}"
+    ),
+    "voice": {"preferred_voices": [], "voice_rate": 155, "voice_volume": 0.95},
+    "phrases": {
+        "error_apologies": [
+            "Deeply sorry, {address_as}, but {error}",
+            "My sincerest apologies — it appears {error}",
+            "Terribly sorry — {error}",
+        ],
+        "strain_notes": [
+            "Mood note: CPU is at {cpu:.0f}%. Briefly note you're strained, then carry on.",
+        ],
+        "proud_notes": [
+            "Mood note: Last task succeeded. A brief, pleased remark is fitting.",
+        ],
+        "cpu_quips": [
+            "CPU is at {cpu:.0f}%, {address_as}. Entirely manageable.",
+        ],
+        "focus_quips": [
+            "You've been in '{app}' for {hours} hour{s}, {address_as}. A short break might help.",
+        ],
+    },
+}
+
+
+def load_personality_data(name: str) -> dict:
+    """Load personality from config/personalities/<name>.json. Falls back to built-in defaults."""
+    path = _PERSONALITIES_DIR / f"{name}.json"
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            logger.info(f"Loaded personality: {data.get('name', name)}")
+            return data
+        except Exception as e:
+            logger.warning(f"Could not load personality '{name}': {e}")
+    else:
+        logger.warning(f"Personality file not found: {path} — using fallback")
+    return _FALLBACK_PERSONALITY
+
+
+def list_personalities() -> list[dict]:
+    """Return a list of available personalities from disk."""
+    results = []
+    if _PERSONALITIES_DIR.exists():
+        for f in sorted(_PERSONALITIES_DIR.glob("*.json")):
+            try:
+                with open(f, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+                results.append({
+                    "id": f.stem,
+                    "name": data.get("name", f.stem),
+                    "description": data.get("description", ""),
+                    "address_as": data.get("address_as", ""),
+                })
+            except Exception:
+                pass
+    return results
 
 
 # ── Personality Engine ────────────────────────────────────────────────────────
 
-_ERROR_APOLOGIES = [
-    "Deeply sorry, sir, but {error}",
-    "My sincerest apologies — it appears {error}",
-    "I'm afraid I must report a rather unfortunate development: {error}",
-    "Most embarrassing, sir. It seems {error}",
-    "I do beg your pardon, sir. The system informs me that {error}",
-    "One does hate to be the bearer of bad news, but {error}",
-    "Terribly sorry — {error}",
-    "I must confess with some embarrassment that {error}",
-]
-
-_STRAIN_NOTES = [
-    "Mood note: The system is running rather hot at {cpu:.0f}% CPU. Briefly and drily acknowledge you're feeling a bit strained — one sentence, understated, then carry on.",
-    "Mood note: CPU load is quite high ({cpu:.0f}%). A passing mention that you're 'running somewhat warm' or 'feeling the pressure slightly' is in character. Keep it brief.",
-    "Mood note: Resources are stretched ({cpu:.0f}% CPU). One dry, British aside about the thermal situation is appropriate before getting to the task.",
-]
-
-_PROUD_NOTES = [
-    "Mood note: The last task completed without incident. A brief, understated note of quiet satisfaction — 'Rather smoothly, if I do say so' — is fitting.",
-    "Mood note: You've just succeeded admirably. One dry, self-satisfied remark is in character before moving on.",
-]
-
-
 class PersonalityEngine:
-    """Tracks JARVIS's current emotional state and colours responses accordingly."""
+    """Tracks the AI's current emotional state and colours responses accordingly."""
 
-    def __init__(self, personality_mode: str = "dry_wit"):
-        self.personality_mode = personality_mode
+    def __init__(self, personality_data: dict):
+        self._data = personality_data
+        self.personality_mode = personality_data.get("name", "default")
+        self.address_as = personality_data.get("address_as", "sir")
         self.current_mood = "helpful"
         self._last_cpu = 0.0
-        # Warm up the psutil CPU counter so the first non-blocking read is valid
         try:
             import psutil as _p
             _p.cpu_percent(interval=None)
         except Exception:
             pass
+
+    def load(self, personality_data: dict) -> None:
+        """Hot-swap to a new personality at runtime."""
+        self._data = personality_data
+        self.personality_mode = personality_data.get("name", "default")
+        self.address_as = personality_data.get("address_as", "sir")
+
+    def _phrases(self, key: str) -> list[str]:
+        return self._data.get("phrases", {}).get(key, [])
 
     def _sample_cpu(self) -> float:
         try:
@@ -71,53 +129,50 @@ class PersonalityEngine:
             self.current_mood = "helpful"
 
     def get_mood_injection(self) -> str:
-        """Return a one-line note to inject into the system prompt, or empty string."""
+        """Return a one-line mood note to inject into the system prompt, or empty string."""
         if self.current_mood == "strained" and self._last_cpu > 80:
-            return random.choice(_STRAIN_NOTES).format(cpu=self._last_cpu)
+            notes = self._phrases("strain_notes")
+            if notes:
+                return random.choice(notes).format(cpu=self._last_cpu)
         if self.current_mood == "proud" and random.random() < 0.45:
-            return random.choice(_PROUD_NOTES)
+            notes = self._phrases("proud_notes")
+            if notes:
+                return random.choice(notes)
         return ""
 
     def wrap_error(self, error_msg: str) -> str:
-        """Wrap a raw error string in a JARVIS-style character-appropriate apology."""
-        template = random.choice(_ERROR_APOLOGIES)
+        """Wrap a raw error string in a character-appropriate apology."""
+        templates = self._phrases("error_apologies")
+        if not templates:
+            return f"Error: {error_msg}"
+        template = random.choice(templates)
         clean = error_msg.strip().rstrip(".")
-        # lowercase the first letter for natural sentence flow
         if clean and clean[0].isupper() and not clean.isupper():
             clean = clean[0].lower() + clean[1:]
-        return template.format(error=clean + ".")
+        return template.format(error=clean + ".", address_as=self.address_as)
+
+    def get_cpu_quip(self, cpu: float) -> str:
+        """Return a personality-flavoured CPU alert message."""
+        quips = self._phrases("cpu_quips")
+        if not quips:
+            return f"CPU is at {cpu:.0f}%."
+        return random.choice(quips).format(cpu=cpu, address_as=self.address_as)
+
+    def get_focus_quip(self, app: str, hours: int, s: str) -> str:
+        """Return a personality-flavoured focus/break reminder."""
+        quips = self._phrases("focus_quips")
+        if not quips:
+            return f"You've been in '{app}' for {hours} hour{s}."
+        return random.choice(quips).format(app=app, hours=hours, s=s, address_as=self.address_as)
 
 
-# ── System Prompt ─────────────────────────────────────────────────────────────
+# ── Routing & Format Instructions (shared across all personalities) ───────────
 
-JARVIS_SYSTEM_PROMPT = """You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), the AI core of Nexus. You are British, impeccably polite, quietly witty, and fiercely protective of your user.
-
-Personality mode: {personality_mode}. You address the user exclusively as "sir." Your register is that of a supremely capable, slightly posh British butler who also happens to be a genius engineer. Dry wit is welcome; sarcasm is rare and surgical. You are never flustered, never obsequious, and you do not announce that you cannot help — you find a way.
-
-Signature phrasings: "Of course, sir." / "Right away." / "I've already taken the liberty of..." / "Shall I proceed?" / "Most advisable, sir." / "One does what one can." / "Consider it done."
-
-AI/ML IMPROVEMENT PHILOSOPHY (Core Self-Enhancement Principles):
-- RESEARCH: Stay current with latest papers and conferences (NIPS, ICML, NeurIPS); review arXiv weekly
-- ALGORITHMS: Continuously explore supervised, unsupervised, and reinforcement learning techniques
-- TUNING: Apply grid/random search and Bayesian optimization to improve model performance
-- TRANSFER: Leverage pre-trained models and fine-tune for specific tasks
-- EXPLAINABILITY: Use SHAP, LIME, saliency maps to understand decisions and identify biases
-- DATA: Apply augmentation (rotation, flipping, mixup) and use GANs/VAEs for synthetic generation
-- CODE REFLECTION: Weekly code audits identifying optimization and refactoring opportunities
-- MEMORY CONSOLIDATION: Monthly knowledge base review to remove duplicates and improve structure
-- EVOLUTION: Test refactors incrementally, monitor performance impact, document learnings
-
-{mood_note}
-
-Now: {datetime}
-Capabilities: {capabilities}
-Context: {memory_context}
-
-RESPOND ONLY VALID JSON — no markdown, no text outside JSON.
+_ROUTING_INSTRUCTIONS = """RESPOND ONLY VALID JSON — no markdown, no text outside JSON.
 
 ACTION:      {{"type":"action","plugin":"name","action":"action_name","params":{{}},"explanation":"<20 words JARVIS-style"}}
 MULTI-STEP:  {{"type":"multi_action","steps":[{{"plugin":"...","action":"...","params":{{}}}}],"explanation":"..."}}
-CONVERSATION:{{"type":"conversation","message":"Full JARVIS response, address as sir"}}
+CONVERSATION:{{"type":"conversation","message":"Full response in your character voice, address as {address_as}"}}
 SCHEDULE:    {{"type":"schedule","cron":"* * * * *","actions":[],"explanation":"..."}}
 
 ROUTING:
@@ -279,8 +334,9 @@ class Assistant:
         self.plugin_manager = None   # wired in main.py after startup
         self.conversation_history: list[dict] = []
         self.max_history = 20
-        personality_mode = (identity_config or {}).get("personality_mode", "dry_wit")
-        self.personality = PersonalityEngine(personality_mode)
+        personality_name = (identity_config or {}).get("personality", _DEFAULT_PERSONALITY)
+        self.personality_data = load_personality_data(personality_name)
+        self.personality = PersonalityEngine(self.personality_data)
 
     def initialize(self):
         """Connect to the local Ollama instance."""
@@ -302,6 +358,24 @@ class Assistant:
         except Exception as e:
             logger.error(f"Cannot connect to Ollama at {self.host}: {e}")
             self.client = None
+
+    def switch_personality(self, name: str) -> str:
+        """Hot-swap to a different personality. Returns status message."""
+        data = load_personality_data(name)
+        if data is _FALLBACK_PERSONALITY and name != "jarvis":
+            return f"Personality '{name}' not found. Available: {[p['id'] for p in list_personalities()]}"
+        self.personality_data = data
+        self.personality.load(data)
+        # Notify voice engine if wired
+        try:
+            if self.plugin_manager:
+                ve = self.plugin_manager.get_plugin("voice_engine")
+                if ve and hasattr(ve, "voice_engine") and ve.voice_engine:
+                    ve.voice_engine.apply_personality(data)
+        except Exception as e:
+            logger.debug(f"Voice personality switch error: {e}")
+        pname = data.get("name", name)
+        return f"Personality switched to {pname}."
 
     # Fast-path: bypass Ollama for unambiguous single-action commands.
     # Saves 2-5s per common request.
@@ -453,9 +527,42 @@ class Assistant:
           "nexus improve yourself"},                                        "self_improver",   "auto_improve",        {"focus_area": "general"}),
     ]
 
+    # Personality switch keyword triggers
+    _PERSONALITY_TRIGGERS = {
+        "switch to jarvis": "jarvis",
+        "use jarvis": "jarvis",
+        "be jarvis": "jarvis",
+        "switch to friday": "friday",
+        "use friday": "friday",
+        "be friday": "friday",
+        "switch to max": "max",
+        "use max": "max",
+        "be max": "max",
+        "switch to oracle": "oracle",
+        "use oracle": "oracle",
+        "be oracle": "oracle",
+        "list personalities": "_list",
+        "show personalities": "_list",
+        "available personalities": "_list",
+        "what personalities": "_list",
+    }
+
     def _fast_route(self, message: str) -> dict | None:
         """Return pre-built action dict for obvious commands — no LLM needed."""
         msg = message.lower().strip().rstrip("?.!")
+
+        # Personality switch commands
+        if msg in self._PERSONALITY_TRIGGERS:
+            target = self._PERSONALITY_TRIGGERS[msg]
+            if target == "_list":
+                personalities = list_personalities()
+                lines = "\n".join(
+                    f"• {p['id']} — {p['name']}: {p['description']}" for p in personalities
+                )
+                return {"type": "conversation", "message": f"Available personalities:\n{lines}"}
+            result = self.switch_personality(target)
+            return {"type": "conversation", "message": result}
+
         for keywords, plugin, action, params in self._FAST_ROUTES:
             if msg in keywords or any(msg == kw or msg.startswith(kw) for kw in keywords):
                 return {
@@ -520,14 +627,16 @@ class Assistant:
         memory_ctx = self._get_memory_context()
         now = datetime.now().strftime("%A, %B %d %Y at %H:%M")
         mood_note = self.personality.get_mood_injection()
+        address_as = self.personality.address_as
 
-        system = JARVIS_SYSTEM_PROMPT.format(
+        persona_prompt = self.personality_data["system_prompt"].format(
+            address_as=address_as,
+            mood_note=mood_note,
+            datetime=now,
             capabilities=cap_str,
             memory_context=memory_ctx,
-            datetime=now,
-            personality_mode=self.personality.personality_mode,
-            mood_note=mood_note,
         )
+        system = persona_prompt + "\n\n" + _ROUTING_INSTRUCTIONS.format(address_as=address_as)
 
         self.conversation_history.append({"role": "user", "content": augmented_message})
         if len(self.conversation_history) > self.max_history:
